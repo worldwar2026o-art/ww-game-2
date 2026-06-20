@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>جنگ جهانی - سامانه شبیه‌سازی استراتژیک</title>
+
+<!-- ===================================================================
+  راهنمای اتصال Firebase:
+  1) مقدار FIREBASE_CONFIG را در پایین همین فایل (در تگ <script>) با
+     Config پروژه خودتان جایگزین کنید.
+  2) در Firebase Console باید Realtime Database را فعال کنید
+     (نه Firestore) و Rules را به صورت زیر تنظیم کنید تا کار کند:
+        {
+          "rules": { ".read": true, ".write": true }
+        }
+     (این تنظیم برای شروع سریع است؛ امن نیست برای پروژه عمومی بزرگ،
+     اما برای بازی دوستانه با کد دعوت کافی است.)
+=================================================================== -->
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Tahoma,Arial,sans-serif;background:#0d0d12;min-height:100vh;direction:rtl;color:#e8e8e8}
+.ticker{background:#1a0000;color:#ff3333;padding:9px 0;overflow:hidden;white-space:nowrap;font-size:13px;font-weight:bold;border-bottom:2px solid #ff3333;position:sticky;top:0;z-index:100}
+.ticker-inner{display:inline-block;animation:ticker 30s linear infinite}
+@keyframes ticker{0%{transform:translateX(-100%)}100%{transform:translateX(120vw)}}
+@keyframes flicker{0%,100%{text-shadow:0 0 20px #e8c86688,0 0 40px #e8c86644}50%{text-shadow:0 0 30px #e8c866cc,0 0 60px #e8c86666}}
+.hero{background:radial-gradient(ellipse at top,#13101f,#050508 70%);padding:3.5rem 1rem;text-align:center;border-bottom:1px solid #2a2a35}
+.hero h1{font-size:2.6rem;font-weight:bold;letter-spacing:4px;margin-bottom:.5rem;color:#e8c866;animation:flicker 3s ease-in-out infinite}
+.hero p{color:#999;font-size:.95rem;margin-bottom:1rem;letter-spacing:1px}
+.conn-status{font-size:.75rem;margin-bottom:2rem;display:inline-block;padding:4px 14px;border-radius:20px}
+.conn-status.online{background:#0a2a0a;color:#5fd75f;border:1px solid #1a5c1a}
+.conn-status.offline{background:#2a0a0a;color:#ff6666;border:1px solid #5c1a1a}
+.hero-grid{display:flex;gap:1.5rem;justify-content:center;flex-wrap:wrap}
+.hero-card{background:#0d0d14;border:1px solid #2a2a38;border-radius:14px;padding:1.75rem 2rem;width:260px;cursor:pointer;transition:transform .15s,border-color .15s;text-align:right}
+.hero-card:hover{transform:translateY(-3px)}
+.hero-card.owner-card:hover{border-color:#ffd700}
+.hero-card.player-card:hover{border-color:#87ceeb}
+.hero-card .hc-icon{font-size:1.8rem;margin-bottom:.6rem;display:block;text-align:center}
+.hero-card .hc-title{font-size:1.05rem;font-weight:bold;margin-bottom:.4rem;text-align:center}
+.hero-card.owner-card .hc-title{color:#ffd700}
+.hero-card.player-card .hc-title{color:#87ceeb}
+.hero-card .hc-desc{font-size:.78rem;color:#888;text-align:center;line-height:1.6}
+.hero-card .hc-btn{margin-top:1rem;width:100%;padding:9px;border-radius:8px;font-size:.85rem;font-family:inherit;font-weight:bold;border:none;cursor:pointer}
+.hero-card.owner-card .hc-btn{background:#8b0000;color:#ffd700}
+.hero-card.player-card .hc-btn{background:#003366;color:#87ceeb}
+.login-box{background:#15151c;border:1px solid #2a2a35;border-radius:12px;padding:2rem;max-width:380px;margin:2rem auto}
+.login-box h2{font-size:1.1rem;font-weight:bold;margin-bottom:1.5rem;color:#eee;text-align:center}
+.login-box input{width:100%;margin-bottom:1rem;padding:10px 12px;border:1px solid #333;border-radius:8px;font-size:.95rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl}
+.login-box button{width:100%;padding:11px;border-radius:8px;cursor:pointer;font-size:.95rem;font-family:inherit;font-weight:bold;border:none}
+.back-btn{background:none;border:none;color:#999;cursor:pointer;font-size:.85rem;margin-bottom:1rem;display:flex;align-items:center;gap:4px;font-family:inherit}
+.panel{padding:1rem;max-width:980px;margin:0 auto}
+.panel-header{background:linear-gradient(90deg,#1a0000,#2a1000);color:#ffd700;padding:1rem 1.5rem;border-radius:12px;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
+.player-header{background:linear-gradient(90deg,#001a33,#002244);color:#87ceeb;padding:1rem 1.5rem;border-radius:12px;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
+.panel-header h2,.player-header h2{font-size:1.15rem;font-weight:bold}
+.panel-badge{font-size:.7rem;padding:3px 10px;border-radius:10px;letter-spacing:1px;margin-bottom:.75rem;display:inline-block}
+.panel-badge.owner{background:#3a0000;color:#ffd700;border:1px solid #5c0000}
+.panel-badge.player{background:#00193a;color:#87ceeb;border:1px solid #003366}
+.reset-link{background:none;border:none;color:#666;font-size:.7rem;cursor:pointer;font-family:inherit;text-decoration:underline;margin-bottom:.5rem;display:block}
+.tab-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1rem}
+.tab{padding:8px 14px;border-radius:8px;border:1px solid #333;background:#1a1a22;cursor:pointer;font-size:.82rem;color:#aaa;font-family:inherit}
+.tab.active{background:#8b0000;color:#ffd700;border-color:#8b0000}
+.tab.player-tab.active{background:#003366;color:#87ceeb;border-color:#003366}
+.card{background:#15151c;border:1px solid #2a2a35;border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.card h3{font-size:.95rem;font-weight:bold;margin-bottom:1rem;color:#eee}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat-card{background:#1d1d26;border-radius:8px;padding:12px;text-align:center}
+.stat-card .num{font-size:1.3rem;font-weight:bold;color:#eee}
+.stat-card .lbl{font-size:.73rem;color:#999;margin-top:2px}
+.input-row{display:flex;gap:8px;margin-bottom:10px}
+.input-row input,.input-row select{flex:1;padding:8px 10px;border:1px solid #333;border-radius:8px;font-size:.85rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl}
+.action-btn{padding:8px 16px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:bold;border:none}
+.btn-danger{background:#8b0000;color:white}
+.btn-success{background:#1a5c1a;color:white}
+.btn-info{background:#003366;color:white}
+.btn-warn{background:#7a5c00;color:#ffd700}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{padding:8px 10px;background:#1d1d26;color:#999;font-weight:bold;text-align:right;border-bottom:1px solid #2a2a35}
+td{padding:8px 10px;border-bottom:1px solid #2a2a35;color:#eee;vertical-align:middle}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.75rem;font-weight:bold}
+.badge-red{background:#3a0000;color:#ff6666}
+.badge-green{background:#002200;color:#66cc66}
+.badge-yellow{background:#2a2000;color:#ffd700}
+.row-btns{display:flex;gap:4px;flex-wrap:wrap}
+.row-btns button{border:none;padding:4px 9px;border-radius:5px;cursor:pointer;font-size:.75rem;font-family:inherit;white-space:nowrap}
+.pending-card{background:#1d1d26;border-radius:8px;padding:12px;margin-bottom:10px;border-right:3px solid #ffd700}
+.pending-card .pc-title{font-size:.85rem;font-weight:bold;margin-bottom:4px}
+.pending-card .pc-meta{font-size:.75rem;color:#999}
+.pending-btns{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.pending-btns button{padding:5px 12px;border-radius:6px;cursor:pointer;font-size:.8rem;font-family:inherit;border:none}
+.reply-box{margin-top:10px;display:none}
+.reply-box.show{display:block}
+.reply-box textarea{min-height:50px;margin-bottom:6px}
+.photo-preview{max-width:160px;border-radius:8px;margin-top:8px;display:block;border:1px solid #333}
+.country-select-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:340px;overflow-y:auto}
+.country-btn{padding:10px 8px;border-radius:8px;border:1px solid #333;cursor:pointer;font-size:.8rem;text-align:center;background:#1d1d26;color:#eee;font-family:inherit}
+.country-btn.taken{background:#1a0000;color:#ff6666;border-color:#330000;cursor:not-allowed}
+.country-btn:not(.taken):hover{border-color:#ffd700}
+.equip-section{margin-bottom:1rem}
+.equip-section-title{font-size:.82rem;font-weight:bold;color:#999;padding:6px 0;border-bottom:1px solid #2a2a35;margin-bottom:6px}
+.eq-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #2a2a35;font-size:.82rem;gap:8px}
+.eq-item:last-child{border-bottom:none}
+.eq-edit{display:flex;gap:4px;align-items:center}
+.eq-edit input{width:75px;padding:4px 8px;border-radius:6px;border:1px solid #333;font-size:.8rem;background:#1d1d26;color:#eee;font-family:inherit;text-align:center}
+.eq-name{color:#eee;flex:1}
+.eq-val{font-weight:bold;color:#eee;min-width:60px;text-align:left}
+.del-x{background:#3a0000;color:#ff6666;border:none;width:24px;height:24px;border-radius:6px;cursor:pointer;font-size:.85rem;line-height:1;flex-shrink:0}
+textarea{width:100%;padding:10px;border:1px solid #333;border-radius:8px;font-size:.85rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl;resize:vertical;min-height:80px;margin-bottom:8px}
+select{padding:8px 10px;border:1px solid #333;border-radius:8px;font-size:.85rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl;width:100%}
+.nuclear-card{background:#0d0000;border:1px solid #440000;border-radius:8px;padding:12px;margin-top:6px}
+.nuclear-card .nc-title{color:#ff4444;font-size:.88rem;font-weight:bold;margin-bottom:10px}
+.warning-box{background:#1a0a00;border:1px solid #553300;border-radius:8px;padding:10px;color:#ffaa88;font-size:.82rem;margin-bottom:8px}
+.msg-item{background:#1d1d26;border-radius:8px;padding:10px;margin-bottom:8px;font-size:.83rem}
+.msg-from{color:#999;font-size:.75rem;margin-bottom:4px}
+.msg-from.approved{color:#4caf50}
+.msg-from.rejected{color:#ff5555}
+.hidden{display:none !important}
+#ticker-text-display{display:inline-block;padding-right:100px}
+.search-box{margin-bottom:10px}
+.search-box input{width:100%;padding:8px 10px;border:1px solid #333;border-radius:8px;font-size:.85rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl}
+.setup-warning{background:#3a2a00;border:2px solid #ffaa00;color:#ffcc66;padding:1rem 1.5rem;margin:1rem;border-radius:10px;font-size:.85rem;line-height:1.8}
+</style>
+</head>
+<body>
+
+<div id="setup-warning" class="setup-warning hidden">
+  ⚠️ <b>Firebase وصل نشده است.</b><br/>
+  لطفاً مقدار FIREBASE_CONFIG را در پایین فایل index.html با اطلاعات پروژه Firebase خودتان جایگزین کنید.
+  تا قبل از آن، بازی فقط به صورت محلی (تک‌کاربره) کار می‌کند.
+</div>
+
+<div id="app">
+<div class="ticker">
+  <span class="ticker-inner"><span id="ticker-text-display">🔴 به سامانه جنگ جهانی خوش آمدید — آماده نبرد باشید — وضعیت: عملیاتی</span></span>
+</div>
+
+<div id="screen-home">
+  <div class="hero">
+    <h1>⚔️ جنگ جهانی</h1>
+    <p>سامانه شبیه‌سازی استراتژیک نبردهای جهانی — ۳۰ کشور، نبرد بی‌پایان</p>
+    <span class="conn-status offline" id="conn-status">در حال اتصال...</span>
+    <div class="hero-grid">
+      <div class="hero-card owner-card" onclick="showOwnerLogin()">
+        <span class="hc-icon">🛡️</span>
+        <div class="hc-title">مالک / پشتیبانی</div>
+        <div class="hc-desc">این بخش مخصوص مالک بازی است — کنترل کامل کشورها، تجهیزات، تأیید بیانیه‌ها و سناریوها</div>
+        <button class="hc-btn">ورود مالک</button>
+      </div>
+      <div class="hero-card player-card" onclick="showPlayerLogin()">
+        <span class="hc-icon">🎮</span>
+        <div class="hc-title">ورود بازیکنان</div>
+        <div class="hc-desc">این بخش مخصوص بازیکنان است — انتخاب کشور، مدیریت تجهیزات و شرکت در نبرد جهانی</div>
+        <button class="hc-btn">ورود بازیکن</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-owner-login" class="hidden" style="padding:1rem">
+  <button class="back-btn" onclick="showHome()">← بازگشت</button>
+  <div class="login-box">
+    <h2>🔐 ورود مالک</h2>
+    <input type="password" id="owner-pass" placeholder="رمز عبور مالک" />
+    <button onclick="ownerLogin()" style="background:#8b0000;color:#ffd700">ورود به پنل مالک</button>
+    <p id="owner-err" style="color:#ff6666;font-size:.8rem;margin-top:8px;text-align:center"></p>
+  </div>
+</div>
+
+<div id="screen-player-login" class="hidden" style="padding:1rem">
+  <button class="back-btn" onclick="showHome()">← بازگشت</button>
+  <div class="login-box">
+    <h2>🎮 ورود بازیکن</h2>
+    <input type="text" id="player-code" placeholder="کد ورود" />
+    <button onclick="playerLogin()" style="background:#003366;color:#87ceeb">ورود به بازی</button>
+    <p id="player-err" style="color:#ff6666;font-size:.8rem;margin-top:8px;text-align:center"></p>
+  </div>
+</div>
+
+<div id="screen-owner-panel" class="hidden" style="padding:1rem">
+  <div class="panel">
+    <div class="panel-header">
+      <h2>🛡️ Owner Panel</h2>
+      <button onclick="showHome()" style="background:none;border:1px solid #ffd70055;color:#ffd700;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.8rem">خروج</button>
+    </div>
+    <span class="panel-badge owner">پنل مدیریت مالک</span>
+    <button class="reset-link" onclick="resetAllData()">پاک‌سازی کامل داده‌ها و شروع تازه (در صورت بروز مشکل)</button>
+    <div class="tab-bar">
+      <button class="tab active" data-tab="ticker" onclick="ownerTab('ticker',this)">📢 زیرنویس</button>
+      <button class="tab" data-tab="codes" onclick="ownerTab('codes',this)">🔑 کدها</button>
+      <button class="tab" data-tab="countries" onclick="ownerTab('countries',this)">🌍 کشورها</button>
+      <button class="tab" data-tab="requests" onclick="ownerTab('requests',this)">📨 درخواست‌ها</button>
+    </div>
+    <div id="owner-ticker" class="card">
+      <h3>📢 مدیریت زیرنویس</h3>
+      <div class="input-row">
+        <input type="text" id="new-ticker" placeholder="متن زیرنویس جدید..." />
+        <button class="action-btn btn-danger" onclick="updateTicker()">ثبت</button>
+      </div>
+      <p style="font-size:.8rem;color:#999">متن فعلی: <span id="current-ticker-preview" style="color:#ff3333"></span></p>
+    </div>
+    <div id="owner-codes" class="card hidden">
+      <h3>🔑 مدیریت کدهای بازیکنان</h3>
+      <div class="input-row">
+        <input type="text" id="new-code-input" placeholder="کد جدید بازیکن..." />
+        <button class="action-btn btn-success" onclick="addCode()">افزودن</button>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>کد ورود</th><th>وضعیت</th><th>کشور</th><th>عملیات</th></tr></thead>
+        <tbody id="codes-table"></tbody></table>
+      </div>
+    </div>
+    <div id="owner-countries" class="card hidden">
+      <h3>🌍 مدیریت تجهیزات کشورها</h3>
+      <div style="margin-bottom:12px">
+        <select id="country-select-owner" onchange="loadCountryEquip()">
+          <option value="">انتخاب کشور...</option>
+        </select>
+      </div>
+      <div id="country-equip-editor"></div>
+      <div class="card" style="margin-top:12px">
+        <h3>🏳️ کشورهای تسخیرشده</h3>
+        <div class="table-wrap">
+          <table><thead><tr><th>کشور</th><th>تسخیرکننده</th><th>تاریخ</th></tr></thead>
+          <tbody id="captured-table"></tbody></table>
+        </div>
+      </div>
+    </div>
+    <div id="owner-requests" class="card hidden">
+      <h3>📨 درخواست‌های در انتظار تأیید</h3>
+      <div id="pending-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-player-panel" class="hidden" style="padding:1rem">
+  <div class="panel">
+    <div class="player-header">
+      <h2>🎮 Player Panel — <span id="player-country-name">بدون کشور</span></h2>
+      <button onclick="showHome()" style="background:none;border:1px solid #87ceeb55;color:#87ceeb;padding:6px 12px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.8rem">خروج</button>
+    </div>
+    <span class="panel-badge player">پنل بازیکن</span>
+    <div class="tab-bar">
+      <button class="tab player-tab active" data-tab="dashboard" onclick="playerTab('dashboard',this)">📊 داشبورد</button>
+      <button class="tab player-tab" data-tab="equip" onclick="playerTab('equip',this)">⚙️ تجهیزات</button>
+      <button class="tab player-tab" data-tab="nuclear" onclick="playerTab('nuclear',this)">☢️ هسته‌ای</button>
+      <button class="tab player-tab" data-tab="statement" onclick="playerTab('statement',this)">📜 بیانیه</button>
+      <button class="tab player-tab" data-tab="scenario" onclick="playerTab('scenario',this)">⚔️ سناریو</button>
+      <button class="tab player-tab" data-tab="news" onclick="playerTab('news',this)">📡 اخبار</button>
+    </div>
+    <div id="player-country-select" class="card">
+      <h3>🌍 انتخاب کشور</h3>
+      <p style="font-size:.85rem;color:#999;margin-bottom:12px">کشور خود را انتخاب کنید. کشورهای قرمز قبلاً گرفته شده‌اند.</p>
+      <div class="search-box"><input type="text" id="country-search" placeholder="جستجوی کشور..." oninput="renderCountryGrid()" /></div>
+      <div class="country-select-grid" id="country-grid"></div>
+    </div>
+    <div id="player-dashboard" class="card hidden">
+      <h3>📊 اطلاعات کلی کشور</h3>
+      <div class="grid3" style="margin-bottom:1rem" id="p-stats-grid"></div>
+    </div>
+    <div id="player-equip" class="card hidden">
+      <h3>⚙️ تجهیزات نظامی کامل</h3>
+      <div id="player-equip-list"></div>
+    </div>
+    <div id="player-nuclear" class="card hidden">
+      <h3>☢️ تسلیحات هسته‌ای</h3>
+      <div id="player-nuclear-content"></div>
+    </div>
+    <div id="player-statement" class="card hidden">
+      <h3>📜 ارسال بیانیه</h3>
+      <p style="font-size:.82rem;color:#999;margin-bottom:10px">بیانیه‌ها برای تأیید مالک ارسال می‌شوند.</p>
+      <label style="font-size:.82rem;color:#999">عنوان بیانیه:</label>
+      <input type="text" id="stmt-title" placeholder="عنوان..." style="width:100%;margin:6px 0 10px;padding:8px;border:1px solid #333;border-radius:8px;font-size:.85rem;background:#1d1d26;color:#eee;font-family:inherit;direction:rtl" />
+      <label style="font-size:.82rem;color:#999">متن بیانیه:</label>
+      <textarea id="stmt-text" placeholder="متن بیانیه..."></textarea>
+      <label style="font-size:.82rem;color:#999">عکس رئیس جمهور / رهبر کشور:</label>
+      <div style="display:flex;gap:8px;margin:6px 0 12px;align-items:center">
+        <input type="file" id="stmt-photo" accept="image/*" style="font-size:.8rem;flex:1" onchange="previewPhoto()" />
+        <span id="stmt-photo-warn" style="color:#ff8888;font-size:.78rem;display:none">⚠️ عکس اجباری است</span>
+      </div>
+      <img id="stmt-photo-preview" class="photo-preview hidden" />
+      <button class="action-btn btn-info" onclick="submitStatement()">ارسال بیانیه</button>
+      <p id="stmt-success" style="color:#66cc66;font-size:.82rem;margin-top:8px;display:none">✅ بیانیه ارسال شد — منتظر تأیید مالک</p>
+    </div>
+    <div id="player-scenario" class="card hidden">
+      <h3>⚔️ سناریو جنگ / دفاع</h3>
+      <div style="margin-bottom:10px">
+        <label style="font-size:.82rem;color:#999">نوع سناریو:</label>
+        <select id="scenario-type" style="margin-top:6px">
+          <option value="war">🗡️ حمله به کشور دیگر</option>
+          <option value="defense">🛡️ دفاع از کشور</option>
+          <option value="alliance">🤝 درخواست اتحاد</option>
+          <option value="sanction">📋 درخواست تحریم</option>
+        </select>
+      </div>
+      <label style="font-size:.82rem;color:#999">جزئیات سناریو:</label>
+      <textarea id="scenario-text" placeholder="سناریو را شرح دهید..."></textarea>
+      <button class="action-btn btn-warn" onclick="submitScenario()">ارسال سناریو</button>
+      <p id="scenario-success" style="color:#66cc66;font-size:.82rem;margin-top:8px;display:none">✅ سناریو ارسال شد — منتظر تأیید مالک</p>
+    </div>
+    <div id="player-news" class="card hidden">
+      <h3>📡 اخبار و اطلاعیه‌ها</h3>
+      <div class="warning-box" id="news-ticker-display"></div>
+      <div id="news-approved"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+/* =====================================================================
+   تنظیمات Firebase — این بخش را با Config پروژه خودتان جایگزین کنید
+   (از Firebase Console > Project Settings > Your apps > Config)
+===================================================================== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAAqx6wUBfwgXD7Yn4NpTTguD766Grgups",
+  authDomain: "world-war-game-199ea.firebaseapp.com",
+  databaseURL: "https://world-war-game-199ea-default-rtdb.firebaseio.com",
+  projectId: "world-war-game-199ea",
+  storageBucket: "world-war-game-199ea.firebasestorage.app",
+  messagingSenderId: "369282035223",
+  appId: "1:369282035223:web:ea80bb5c193ffd19eeb652"
+};
+
+const OWNER_PASS='m.1389.2009';
+let currentPlayerCode='';
+let currentPlayerCountry='';
+let pendingPhotoData='';
+let dbRef=null;
+let firebaseReady=false;
+let gameState=null;
+let suppressNextWrite=false;
+
+function mkCat(cat,names,base,variance){
+  return {cat,items:names.map((n,i)=>({n,v:Math.max(1,Math.round(base*(1+(Math.sin(i*1.7)*variance))))}))};
+}
+function buildEquip(profile){
+  const e=[];
+  e.push(mkCat('تانک‌ها',profile.tanks,profile.tankBase,0.5));
+  e.push(mkCat('جنگنده‌ها و هواپیماها',profile.jets,profile.jetBase,0.6));
+  e.push(mkCat('پهپادها',profile.drones,profile.droneBase,0.6));
+  e.push(mkCat('موشک‌های بالستیک',profile.ballistic,profile.ballisticBase,0.5));
+  e.push(mkCat('موشک‌های کروز',profile.cruise,profile.cruiseBase,0.5));
+  e.push(mkCat('سامانه‌های دفاع موشکی',profile.airdef,profile.airdefBase,0.5));
+  e.push(mkCat('ناوگان دریایی',profile.navy,profile.navyBase,0.6));
+  e.push(mkCat('توپخانه',profile.artillery,profile.artilleryBase,0.5));
+  e.push({cat:'نیروی انسانی',items:[
+    {n:'سربازان فعال (هزار)',v:profile.army},
+    {n:'نیروی ذخیره (هزار)',v:Math.round(profile.army*0.5)},
+    {n:'نیروی ویژه (هزار)',v:Math.round(profile.army*0.04)},
+    {n:'شبه‌نظامی / بسیج (هزار)',v:Math.round(profile.army*0.3)},
+    {n:'افسران ارشد (هزار)',v:Math.round(profile.army*0.02)},
+    {n:'نیروی هوابرد (هزار)',v:Math.round(profile.army*0.06)},
+    {n:'نیروی دریایی پیاده (هزار)',v:Math.round(profile.army*0.05)}
+  ]});
+  return e;
+}
+
+const COUNTRIES=[
+{id:'us',name:'🇺🇸 آمریکا',gdp:25000,pop:335,budget:858,nuclear:true,nukes:[{n:'W88 (کلاهک ICBM)',v:400},{n:'W76 (موشک ترایدنت)',v:900},{n:'B61 (بمب هوایی)',v:230},{n:'W80 (موشک کروز)',v:200},{n:'W87 (کلاهک مینوتمن)',v:300},{n:'W78 (ذخیره)',v:175},{n:'B83 (بمب راهبردی)',v:50}],profile:{
+ army:1400,tankBase:2200,tanks:['M1A2 Abrams','M1A1 Abrams','M60 Patton (ذخیره)','Stryker M1128','M2 Bradley','LAV-25','M3 Bradley'],
+ jetBase:300,jets:['F-35A Lightning II','F-22 Raptor','F-16 Fighting Falcon','F-15 Eagle','B-2 Spirit','B-52 Stratofortress','A-10 Thunderbolt'],
+ droneBase:150,drones:['MQ-9 Reaper','RQ-4 Global Hawk','MQ-1 Predator','X-47B','RQ-170 Sentinel','MQ-25 Stingray','ScanEagle'],
+ ballisticBase:300,ballistic:['Minuteman III (ICBM)','Trident II D5','LGM-30G','PGS (هایپرسونیک)','ATACMS','PrSM','AGM-183 ARRW'],
+ cruiseBase:2000,cruise:['Tomahawk BGM-109','AGM-86 ALCM','JASSM-ER','Harpoon','SLAM-ER','AGM-158','Standoff Land Attack'],
+ airdefBase:50,airdef:['Patriot PAC-3','THAAD','Aegis BMD','NASAMS','Avenger','C-RAM','Iron Dome (US)'],
+ navyBase:25,navy:['ناو هواپیمابر Nimitz','ناو موشک‌انداز Arleigh Burke','زیردریایی Los Angeles','زیردریایی Virginia','زیردریایی Ohio','ناو Zumwalt','ناو ساحلی Independence'],
+ artilleryBase:900,artillery:['M109A6 Paladin','M270 MLRS','M198 Howitzer','M119 Howitzer','HIMARS','M777 (مشترک)','Excalibur (هدایت‌شونده)']
+}},
+{id:'ru',name:'🇷🇺 روسیه',gdp:1800,pop:145,budget:86,nuclear:true,nukes:[{n:'SS-18 Satan (کلاهک)',v:1588},{n:'RS-28 Sarmat',v:46},{n:'Bulava (زیردریایی)',v:176},{n:'B61 تاکتیکی (تخمین)',v:1912},{n:'Iskander هسته‌ای',v:60},{n:'Kinzhal هسته‌ای',v:40},{n:'Poseidon (زیردریایی اتمی)',v:6}],profile:{
+ army:1350,tankBase:5000,tanks:['T-14 Armata','T-90M Proryv','T-80BVM','T-72B3M','T-55 (ذخیره)','BMP-3','BTR-82A'],
+ jetBase:120,jets:['Su-57 Felon','Su-35S','Su-30SM','MiG-35','Su-34','Tu-160 Blackjack','Tu-95 Bear'],
+ droneBase:1000,drones:['Orion','Altius-RU','Lancet (انتحاری)','KYB (انتحاری)','Forpost-R','Geran-2','ZALA 421'],
+ ballisticBase:50,ballistic:['RS-28 Sarmat (ICBM)','SS-18 Satan','R-36M2','Topol-M','Yars RS-24','Iskander-M','Oreshnik'],
+ cruiseBase:600,cruise:['Kalibr 3M-54','Kh-101/102','Kh-55SM','Kh-47M2 Kinzhal','3M22 Zircon','Kh-35','9M729'],
+ airdefBase:80,airdef:['S-400 Triumf','S-500 Prometheus','S-300VM','Pantsir-S1','Buk-M3','Tor-M2','S-350 Vityaz'],
+ navyBase:5,navy:['ناو اسکورت Slava','ناو موشک‌انداز Gorshkov','زیردریایی Oscar II','زیردریایی Borei','زیردریایی Yasen','کشتی یخ‌شکن مسلح','ناوچه Buyan-M'],
+ artilleryBase:900,artillery:['2S19 Msta-S','BM-21 Grad','TOS-1A Buratino','2S7 Pion','BM-27 Uragan','BM-30 Smerch','2S35 Koalitsiya']
+}},
+{id:'cn',name:'🇨🇳 چین',gdp:17700,pop:1400,budget:224,nuclear:true,nukes:[{n:'DF-41 (کلاهک ICBM)',v:100},{n:'DF-5B',v:40},{n:'JL-2 (زیردریایی)',v:48},{n:'DF-31 (تاکتیکی)',v:100},{n:'DF-26 هسته‌ای',v:80},{n:'JL-3 (نسل جدید)',v:24},{n:'H-6N (هوایی)',v:20}],profile:{
+ army:2035,tankBase:1500,tanks:['Type 99A','Type 96B','Type 15 (سبک)','ZTQ-15','Type 59 (ذخیره)','ZBD-04','Type 05'],
+ jetBase:200,jets:['J-20 Mighty Dragon','J-16','J-10C','J-15 (ناو)','H-6K (بمب‌افکن)','Y-20 (حمل‌ونقل)','JH-7A'],
+ droneBase:150,drones:['Wing Loong II','CH-5 Rainbow','TB-001','WZ-8 (شناسایی)','GJ-11','CH-4','ASN-209'],
+ ballisticBase:100,ballistic:['DF-41 (ICBM)','DF-5B','DF-31AG','DF-21D (ضدناو)','DF-26 (IRBM)','DF-17 (هایپرسونیک)','DF-15'],
+ cruiseBase:600,cruise:['CJ-100','DH-10','YJ-18 (دریایی)','YJ-12','CJ-10','KD-20','YJ-83'],
+ airdefBase:70,airdef:['HQ-9B','HQ-22','HQ-16','HQ-19 (ضدموشک)','HQ-17','HQ-7','LY-80'],
+ navyBase:5,navy:['ناو هواپیمابر Type 003','ناو هواپیمابر Liaoning','ناو موشک‌انداز Type 055','زیردریایی Type 094','زیردریایی Type 093','ناوچه Type 056','ناو آبی‌خاکی Type 075'],
+ artilleryBase:900,artillery:['PHL-03 (MLRS)','PLZ-05 (خودکششی)','WS-2 (MLRS برد بلند)','PLZ-07','PLL-05','SH-15 (خودکششی سبک)','AR-3 (راکت)']
+}},
+{id:'uk',name:'🇬🇧 انگلستان',gdp:3100,pop:67,budget:68,nuclear:true,nukes:[{n:'Trident II D5',v:120},{n:'کلاهک W76-1',v:105}],profile:{
+ army:195,tankBase:200,tanks:['Challenger 2','Challenger 3','Warrior IFV','AJAX','Foxhound','Jackal','Mastiff'],
+ jetBase:80,jets:['Eurofighter Typhoon','F-35B Lightning','Tornado GR4 (بازنشسته)','RC-135 Rivet Joint','P-8 Poseidon','Voyager (سوخت‌رسان)','Hawk T2'],
+ droneBase:30,drones:['MQ-9 Reaper','Watchkeeper WK450','Protector RG Mk1','Puma AE','Black Hornet','Desert Hawk','Tarantula Hawk'],
+ ballisticBase:0,ballistic:['موشک تاکتیکی ندارد','-','-','-','-','-','-'],
+ cruiseBase:400,cruise:['Tomahawk Block V','Storm Shadow/SCALP','Brimstone 3','Sea Venom','Spear 3','Harpoon','Martlet'],
+ airdefBase:15,airdef:['Sky Sabre (CAMM)','Rapier (بازنشسته)','Starstreak','Sea Ceptor','Land Ceptor','ASRAAM زمینی','Giraffe رادار'],
+ navyBase:2,navy:['ناو هواپیمابر Queen Elizabeth','ناو هواپیمابر Prince of Wales','ناو موشک‌انداز Type 45','زیردریایی Vanguard','زیردریایی Astute','فریگات Type 23','کشتی برج‌دار Albion'],
+ artilleryBase:90,artillery:['AS-90 Braveheart','M270 MLRS','L118 Light Gun','105mm Howitzer','81mm Mortar','Archer (در حال خریداری)','RCH 155 (آینده)']
+}},
+{id:'fr',name:'🇫🇷 فرانسه',gdp:2800,pop:68,budget:53,nuclear:true,nukes:[{n:'ASMP-A هوایی',v:50},{n:'M51 (زیردریایی)',v:48}],profile:{
+ army:270,tankBase:230,tanks:['Leclerc XLR','AMX-10RC','VBCI','ERC-90','EBRC Jaguar','VAB','Griffon'],
+ jetBase:90,jets:['Rafale F3-R','Mirage 2000-5','E-3F AWACS','A400M (حمل‌ونقل)','C-135FR (سوخت‌رسان)','Alpha Jet','Atlantique 2'],
+ droneBase:15,drones:['Reaper MQ-9','Harfang MALE','Patroller','SDTI','Spy Ranger','Aarok (آینده)','Colibri'],
+ ballisticBase:0,ballistic:['ASMP-A تاکتیکی','-','-','-','-','-','-'],
+ cruiseBase:150,cruise:['SCALP-EG','ASMP-A','Exocet','MdCN دریایی','AASM (بمب هدایت)','Mistral','Aster 30'],
+ airdefBase:10,airdef:['SAMP/T Aster 30','Mistral SHORAD','Crotale NG','VL MICA','Rapier فرانسوی','Ground Master رادار','Roland (ذخیره)'],
+ navyBase:3,navy:['ناو هواپیمابر Charles de Gaulle','زیردریایی Triomphant','زیردریایی Barracuda','فریگات FREMM','فریگات Lafayette','ناو حمل‌ونقل Mistral','کشتی Floréal'],
+ artilleryBase:80,artillery:['Caesar (خودکششی 155mm)','LRU/MLRS','TRF1 (بازنشسته)','81mm Mortar','120mm Mortar','MO 120 RT','AMX 30 AuF1 (ذخیره)']
+}},
+{id:'de',name:'🇩🇪 آلمان',gdp:4100,pop:84,budget:66,nuclear:false,nukes:[],profile:{
+ army:265,tankBase:300,tanks:['Leopard 2A7+','Leopard 2A6','Leopard 2A5 (ذخیره)','Puma IFV','Boxer','Marder','Fennek'],
+ jetBase:60,jets:['Eurofighter Typhoon','Tornado ECR','P-8 Poseidon','A400M','Airbus A330 MRTT','NH90','Tiger (هلیکوپتر)'],
+ droneBase:5,drones:['Heron TP','KZO (ارتشی)','Luna NG','Aladin (شناسایی)','Mikado','Vector','Patrol Vehicle UAV'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:300,cruise:['Taurus KEPD 350','IRIS-T SLM','RBS-15','Naval Strike Missile','Harpoon (دریایی)','MdCN','TLVS'],
+ airdefBase:12,airdef:['Patriot PAC-3','IRIS-T SLM','MANTIS','Ozelot','Skyranger 30','Roland (آلمانی)','LeFlaSys'],
+ navyBase:3,navy:['فریگات F125','فریگات F124 Sachsen','زیردریایی Type 212A','ناوچه K130','کشتی پشتیبانی Berlin','کشتی Bonn','ناوچه گشتی Type 332'],
+ artilleryBase:120,artillery:['PzH 2000 (خودکششی)','MARS II (MLRS)','120mm Mortar','Wiesel (سبک)','M109 (ذخیره)','81mm Mortar','RCH 155 (آینده)']
+}},
+{id:'ir',name:'🇮🇷 ایران',gdp:367,pop:87,budget:10,nuclear:false,nukes:[],profile:{
+ army:610,tankBase:600,tanks:['Karrar','T-72S','T-54/55','Zulfiqar-3','M60 (تصرف‌شده قدیمی)','Boragh','BMT-2'],
+ jetBase:40,jets:['F-14A Tomcat','Su-24MK Fencer','MiG-29','F-4E Phantom','Kowsar','F-5 Tiger','Saeqeh'],
+ droneBase:1500,drones:['شاهد-136 (انتحاری)','شاهد-191 (رزمی)','کاسر-22 (رزمی)','مهاجر-6','ابابیل-4','آرش-2 (انتحاری)','سیمرغ (شناسایی)'],
+ ballisticBase:80,ballistic:['شهاب-3 (MRBM)','قدر-110 (MRBM)','سجیل (MRBM)','خرمشهر-4','عماد (MRBM)','فتح-360','ذوالفقار'],
+ cruiseBase:150,cruise:['هواصادق-2','پاوه (کروز دریایی)','قدس-1','ابومهدی','نصیر','صاعقه (دریایی)','کوثر (ضدکشتی)'],
+ airdefBase:15,airdef:['Bavar-373','Khordad-15','Talash','Sayyad-2','Raad','Majid','Herz-9'],
+ navyBase:3,navy:['ناو موشک‌انداز Sahand','زیردریایی Fateh','زیردریایی Kilo','قایق تندرو موشک‌انداز','ناوچه Jamaran','کشتی پدافند Damavand','ناوچه Sina'],
+ artilleryBase:300,artillery:['Arash (خودکششی)','Fajr-5 (موشک‌انداز)','Zelzal (راکت)','HM-20 (هاوتیزر)','Raad-1','M-1978 Koksan','Type-59 (توپ)']
+}},
+{id:'tr',name:'🇹🇷 ترکیه',gdp:906,pop:85,budget:26,nuclear:false,nukes:[],profile:{
+ army:440,tankBase:300,tanks:['Leopard 2A4','M60T Sabra','Altay (ملی)','M113 (نفربر)','ACV-15','Kaplan-20','Pars IFV'],
+ jetBase:120,jets:['F-16C/D Fighting Falcon','F-4E Phantom (بازنشسته)','KAAN (ملی - آزمایشی)','Hürkuş (آموزشی-رزمی)','T-129 ATAK','CN-235','A400M Türk'],
+ droneBase:600,drones:['Bayraktar TB2','Bayraktar Akıncı','Bayraktar TB3','KARGU-2 (انتحاری)','ALPAGU (انتحاری)','Anka-S','Aksungur'],
+ ballisticBase:40,ballistic:['Bora-2 (بالستیک)','Yıldırım (SRBM)','Khan (آینده)','-','-','-','-'],
+ cruiseBase:150,cruise:['SOM-B2','Atmaca (دریایی)','Gezgin (کروز برد بلند)','Çakır','Stand-off Missile','SOM-J','Mizrak-O (ضدزره)'],
+ airdefBase:25,airdef:['HİSAR-O+','HİSAR-U','HİSAR-A+ (آینده)','Korkut (خودکششی)','Zıpkın','Sungur','Atılgan'],
+ navyBase:6,navy:['فریگات F-100 Oliver Hazard Perry','فریگات TF-100 (ملی)','زیردریایی Type 209/1400','ناو TCG Anadolu (LHD)','کرت‌ Ada','ناوچه Burak','ناو پشتیبانی'],
+ artilleryBase:350,artillery:['T-155 Fırtına','T-122 Sakarya (MLRS)','TRG-300 Kaplan (راکت)','Panter (خودکششی)','HY-12','120mm Mortar','UMTAS-equipped MRAP']
+}},
+{id:'kp',name:'🇰🇵 کره شمالی',gdp:18,pop:26,budget:4,nuclear:true,nukes:[{n:'کلاهک هسته‌ای (تخمین)',v:50},{n:'بمب هیدروژنی',v:5}],profile:{
+ army:1280,tankBase:1500,tanks:['Pokpung-ho IV','T-62','T-54/55','PT-85 (سبک)','M-2020 (نسل جدید)','VTT-323','M1973'],
+ jetBase:60,jets:['MiG-29S','MiG-23ML','MiG-21bis','Su-25 Frogfoot','Il-28 (قدیمی)','An-2 (نفوذ ویژه)','MiG-19 (ذخیره)'],
+ droneBase:800,drones:['Shahed-136 (واردشده)','Saebyol-4 (ملی)','KN-24 (انتحاری)','Banghyang-1','پهپاد شناسایی Pchela','UAV ساخت داخل','پهپاد هدف‌یاب'],
+ ballisticBase:20,ballistic:['Hwasong-18 (ICBM)','Hwasong-17 (ICBM)','Hwasong-15 (ICBM)','Pukguksong-4 (SLBM)','KN-23 (SRBM)','Hwasong-12','KN-25 (MLRS بالستیک)'],
+ cruiseBase:200,cruise:['Hwasal-2','Hwasal-1 Ra-1','Kumsong-3 (ضدکشتی)','-','-','-','-'],
+ airdefBase:50,airdef:['Pyongae-5 (S-300 کپی)','KN-06','SA-2 (قدیمی)','SA-3','Igla-S','Strela-10','ZSU-23'],
+ navyBase:20,navy:['زیردریایی Romeo','زیردریایی Sang-O','قایق موشک‌انداز','زیردریایی Sinpo (SSB تجربی)','ناوچه گشتی','کشتی توپدار','هاورکرافت تهاجمی'],
+ artilleryBase:500,artillery:['M-1978 Koksan 170mm','M-1985 240mm (MLRS)','BM-11 (MLRS)','D-30 Howitzer','M-46 (130mm)','ATGM-equipped Truck','Type 70 (122mm)']
+}},
+{id:'in',name:'🇮🇳 هند',gdp:3400,pop:1430,budget:81,nuclear:true,nukes:[{n:'Agni-V (کلاهک ICBM)',v:50},{n:'کلاهک تاکتیکی Prithvi',v:30},{n:'Nirbhay (هسته‌ای)',v:20}],profile:{
+ army:1455,tankBase:1500,tanks:['T-90S Bhishma','Arjun Mk-1A','T-72M1 Ajeya','BMP-2 Sarath','ICV Abhay','Kestrel (سبک آینده)','T-55 (ذخیره)'],
+ jetBase:150,jets:['Su-30MKI','Rafale','MiG-29UPG','Tejas Mk-1A','Jaguar IS','Mirage 2000','C-17 Globemaster'],
+ droneBase:25,drones:['MQ-9B SeaGuardian','Heron TP','Rustom-2','Nishant','Searcher Mk-II','Drishti-10','Archer-NG'],
+ ballisticBase:30,ballistic:['Agni-V (ICBM)','Agni-IV (IRBM)','Agni-III (IRBM)','Prithvi-III','Agni-P','Shaurya','K-15 (زیردریایی)'],
+ cruiseBase:200,cruise:['BrahMos (مافوق صوت)','Nirbhay (کروز)','BrahMos-NG','Helina (ضدزره)','SAAW','Rudram (ضدراداری)','Astra (هوایی)'],
+ airdefBase:15,airdef:['S-400 Triumf','Akash-NG','MR-SAM (Barak-8)','QRSAM','Spyder','Pechora (قدیمی)','OSA-AK'],
+ navyBase:3,navy:['ناو هواپیمابر Vikrant','ناو هواپیمابر Vikramaditya','زیردریایی Arihant','زیردریایی Scorpène','فریگات Shivalik','ناوشکن Visakhapatnam','ناوچه Kamorta'],
+ artilleryBase:150,artillery:['K9 Vajra-T','Pinaka (MLRS)','M777 Howitzer','Dhanush','Bofors FH-77','Smerch','120mm Mortar']
+}},
+{id:'pk',name:'🇵🇰 پاکستان',gdp:341,pop:231,budget:11,nuclear:true,nukes:[{n:'Shaheen-III (کلاهک)',v:50},{n:'کلاهک تاکتیکی Nasr',v:80}],profile:{
+ army:654,tankBase:700,tanks:['Al-Khalid 1','Al-Zarrar','T-80UD','Type 85-IIAP','M113 (نفربر)','Talha APC','Saad APC'],
+ jetBase:80,jets:['JF-17 Thunder Block-III','F-16C/D Falcon','Mirage IIIEA/ROSE','K-8 Karakorum','Super Mushshak','C-130 Hercules','Mirage 5'],
+ droneBase:40,drones:['Bayraktar TB2','CH-4B Rainbow','Burraq (ملی)','Shahpar-II','GIDS Uqab','Falco','Vector (شناسایی)'],
+ ballisticBase:30,ballistic:['Shaheen-III (MRBM)','Shaheen-II','Ghauri-III (MRBM)','Ababeel (MIRV)','Nasr (تاکتیکی)','Hatf-IX','Abdali'],
+ cruiseBase:80,cruise:['Ra\'ad-II (هوایی)','Babur-3 (دریایی)','Zarb (ضدکشتی)','Harba (دریایی)','Babur-1B','C-802 (چینی)','Harpoon (محدود)'],
+ airdefBase:8,airdef:['HQ-9P (چینی)','Spada 2000','Crotale (فرانسوی)','LY-80','FM-90','Anza (قابل‌حمل)','RBS-70'],
+ navyBase:3,navy:['فریگات F-22P','زیردریایی Agosta-90B','زیردریایی Hangor (چینی)','ناوشکن Type 054 (چینی)','ناوچه Azmat','کشتی پشتیبانی Moawin','ناوچه گشتی Jinnah'],
+ artilleryBase:160,artillery:['M109A5 Paladin','A-100 (MLRS چینی)','SH-15','M198 (155mm)','Type 59-1 (130mm)','120mm Mortar','M110 (ذخیره)']
+}},
+{id:'il',name:'🇮🇱 اسرائیل',gdp:522,pop:9,budget:23,nuclear:true,nukes:[{n:'کلاهک هسته‌ای (تخمین)',v:90}],profile:{
+ army:176,tankBase:550,tanks:['Merkava Mk-4M','Merkava Mk-3 Baz','Namer (نفربر سنگین)','Achzarit','D9 (بولدوزر زرهی)','Eitan IFV','M113 (ارتقایافته)'],
+ jetBase:60,jets:['F-35I Adir','F-15I Ra\'am','F-16I Sufa','F-15A/B/C/D','C-130J Hercules','Boeing 707 (سوخت‌رسان)','Apache AH-64'],
+ droneBase:150,drones:['Heron TP (Eitan)','Hermes 900','Hermes 450','Harop (انتحاری)','Harpy (انتحاری)','Skylark','ThunderB'],
+ ballisticBase:30,ballistic:['Jericho III (ICBM)','Jericho II (MRBM)','LORA (بالستیک کوتاه)','-','-','-','-'],
+ cruiseBase:100,cruise:['Popeye Turbo','Gabriel V (دریایی)','Delilah','Sea Breaker','Rampage','Spike NLOS','Crystal Maze'],
+ airdefBase:6,airdef:['Iron Dome','David\'s Sling','Arrow-3 (ضدICBM)','Patriot PAC-2','Barak-8','Stunner (رهگیر)','Spyder-SR'],
+ navyBase:3,navy:['زیردریایی Dolphin-II','ناو موشک‌انداز Sa\'ar 6','ناوچه Sa\'ar 4.5','کشتی گشتی Super Dvora','ناوچه Hetz','کشتی تجسسی','ناوچه Eilat'],
+ artilleryBase:600,artillery:['M109A5 Doher','Lynx (MLRS)','Spike NLOS (موشک دورپرتاب)','Soltam M-71','120mm Mortar','Keshet (خودکششی موبایل)','Cardom']
+}},
+{id:'jp',name:'🇯🇵 ژاپن',gdp:4200,pop:125,budget:54,nuclear:false,nukes:[],profile:{
+ army:150,tankBase:500,tanks:['Type 10','Type 90','Type 74 (ذخیره)','Type 89 IFV','Type 96 APC','Type 16 MCV','Komatsu LAV'],
+ jetBase:150,jets:['F-35A Lightning','F-15J Eagle','F-2 (مشترک با F-16)','C-2 (حمل‌ونقل)','E-2D Hawkeye','P-1 (ضدزیردریایی)','KC-46A'],
+ droneBase:10,drones:['RQ-4 Global Hawk','ScanEagle','Type 03 (شناسایی)','SOTHIC (تجربی)','پهپاد دریایی','پهپاد ساحلی','مینی‌پهپاد ارتشی'],
+ ballisticBase:0,ballistic:['ندارد (محدودیت قانونی)','-','-','-','-','-','-'],
+ cruiseBase:150,cruise:['Type 12 (ضدکشتی)','ASM-3','Tomahawk (خرید جدید)','Type 88','JSM (آینده)','LRASM (خرید)','Type 93'],
+ airdefBase:15,airdef:['Patriot PAC-3','Type 03 Chu-SAM','SM-3 (دریایی)','Type 81 Tan-SAM','Type 11','AAM-4','PAC-2'],
+ navyBase:4,navy:['ناو هلیکوپتربر Izumo','ناوشکن Maya','زیردریایی Soryu','زیردریایی Taigei','فریگات Mogami','ناوشکن Kongo (Aegis)','کشتی پشتیبانی Mashu'],
+ artilleryBase:200,artillery:['Type 99 (خودکششی)','Type 75 (MLRS)','Type 19 (خودکششی جدید)','Type 96 (40mm)','120mm Mortar','MLRS M270 (مشترک)','Type 81 (107mm)']
+}},
+{id:'kr',name:'🇰🇷 کره جنوبی',gdp:1700,pop:52,budget:46,nuclear:false,nukes:[],profile:{
+ army:500,tankBase:1000,tanks:['K2 Black Panther','K1A2','K1 (پایه)','K21 IFV','K200 APC','K808 (چرخ‌دار)','Biho (ضدهوایی خودکششی)'],
+ jetBase:150,jets:['KF-21 Boramae','F-35A Lightning','F-15K Slam Eagle','KF-16','FA-50 Golden Eagle','C-130H','E-737 Peace Eye'],
+ droneBase:30,drones:['RQ-4 Global Hawk','Heron','KUS-FT (رزمی)','Songgolmae','Devil Killer (انتحاری)','OH-58 (شناسایی)','Remoeye-002'],
+ ballisticBase:40,ballistic:['Hyunmoo-5','Hyunmoo-4','Hyunmoo-3 (کروز)','ATACMS (خریداری)','Hyunmoo-2','KTSSM','L-SAM (رهگیر)'],
+ cruiseBase:100,cruise:['Hyunmoo-3','Haeseong (ضدکشتی)','SSM-700K','Cheonryong (هوایی)','Taeguk (آینده)','Harpoon','Sea Skua'],
+ airdefBase:15,airdef:['Cheongung-II (KM-SAM)','Patriot PAC-3','L-SAM','Chiron (قابل‌حمل)','K30 Biho','Pegasus (آینده)','Iron Dome (مشترک)'],
+ navyBase:5,navy:['ناو هلیکوپتربر Dokdo','ناوشکن Sejong the Great (Aegis)','زیردریایی Son Won-il (Type 214)','زیردریایی KSS-III','فریگات Incheon','ناوچه گشتی','کشتی پشتیبانی Soyang'],
+ artilleryBase:600,artillery:['K9 Thunder','K55 (خودکششی)','K136 Kooryong (MLRS)','K10 (پشتیبان مهمات)','M110 (ذخیره)','120mm Mortar','K105A1']
+}},
+{id:'sa',name:'🇸🇦 عربستان سعودی',gdp:1100,pop:36,budget:75,nuclear:false,nukes:[],profile:{
+ army:230,tankBase:900,tanks:['M1A2S Abrams','AMX-30 (ذخیره)','M60A3','AMX-10P','LAV-25 (سعودی)','Al-Masmak APC','Piranha'],
+ jetBase:200,jets:['F-15SA Eagle','Eurofighter Typhoon','Tornado IDS','F-15C/D','Hawk Mk65','C-130 Hercules','A330 MRTT'],
+ droneBase:50,drones:['CH-4 (چینی)','Wing Loong II','Skeldar V-200','Saqr-1 (ملی)','MQ-9 (محدود)','Falco EVO','Hermes 450'],
+ ballisticBase:30,ballistic:['DF-3 (چینی - قدیمی)','DF-21 (تخمین)','-','-','-','-','-'],
+ cruiseBase:30,cruise:['Storm Shadow','Black Shaheen','Harpoon (دریایی)','-','-','-','-'],
+ airdefBase:30,airdef:['Patriot PAC-3','THAAD','Skyguard','Shahine (فرانسوی)','Crotale','Avenger','Stinger'],
+ navyBase:5,navy:['فریگات Al Riyadh','ناوچه Avante 2200','کشتی گشتی Badr','ناوچه حمله سریع','کشتی پشتیبانی Boraida','ناوچه گشتی ساحلی','کشتی آبی‌خاکی LCU'],
+ artilleryBase:200,artillery:['M109A2 (خودکششی)','M198 (155mm)','AS90 (محدود)','M110 (ذخیره)','ASTROS II','120mm Mortar','M114 (105mm)']
+}},
+{id:'eg',name:'🇪🇬 مصر',gdp:476,pop:109,budget:5,nuclear:false,nukes:[],profile:{
+ army:440,tankBase:1100,tanks:['M1A1 Abrams (ساخت محلی)','T-80U','T-62 (ذخیره)','BMP-1','M113A2','BTR-50','Fahd APC'],
+ jetBase:120,jets:['Rafale','F-16C/D','MiG-29M','Mirage 2000','Su-35 (در حال تحویل)','J-7 (چینی-قدیمی)','C-130H'],
+ droneBase:30,drones:['Wing Loong I/II','CH-4','ASN-209','Skylark','Camcopter S-100','پهپاد ساخت داخل','Sky Saker'],
+ ballisticBase:10,ballistic:['Sakr (محلی)','Project-T (تخمین)','-','-','-','-','-'],
+ cruiseBase:30,cruise:['Kh-35 (دریایی)','Otomat','Exocet (محدود)','-','-','-','-'],
+ airdefBase:20,airdef:['S-300VM','Buk-M2','Tor-M1','Crotale','Skyguard','Igla','Amoun (Skyguard/RIM-7)'],
+ navyBase:4,navy:['ناو حمل‌ونقل Mistral (خریداری)','فریگات MEKO 200','زیردریایی Type 209','ناوچه Ambassador','کشتی گشتی Gowind','ناوچه Romeo','کشتی موزه‌ای پشتیبانی'],
+ artilleryBase:300,artillery:['M109A2 (خودکششی)','SAKR-18 (راکت)','BM-21 Grad','M198 (155mm)','D-30 (122mm)','120mm Mortar','M110 (ذخیره)']
+}},
+{id:'br',name:'🇧🇷 برزیل',gdp:2200,pop:215,budget:20,nuclear:false,nukes:[],profile:{
+ army:215,tankBase:400,tanks:['Leopard 1A5','M60A3TTS (ذخیره)','EE-9 Cascavel','EE-11 Urutu','Guarani VBTP','M113BR','EE-T1 Osorio (آزمایشی)'],
+ jetBase:50,jets:['Gripen E/F','F-5EM Tiger','A-29 Super Tucano','AMX (ساخت محلی)','C-130 Hercules','KC-390 Millennium','P-3 Orion'],
+ droneBase:15,drones:['Hermes 450/900','Heron','Horus FT-100','Carcará II (ملی)','Nauru 1000','Tiriba','SIVAM Drone'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:20,cruise:['MAR-1 (ضدراداری)','Exocet (دریایی)','MANSUP (ملی)','-','-','-','-'],
+ airdefBase:8,airdef:['SPADA (ایتالیایی)','Igla-S','RBS-70','BAMSE (تخمین)','Mectron MSS 1.2','Oerlikon','Bofors'],
+ navyBase:2,navy:['ناو هواپیمابر Atlântico','زیردریایی Riachuelo (فرانسوی)','زیردریایی Tupi','فریگات Niteroi','ناوچه Macaé','کشتی پشتیبانی Almirante','ناوچه گشتی Amazonas'],
+ artilleryBase:80,artillery:['ASTROS II (MLRS)','M109A3 (خودکششی)','L118 (105mm)','M114 (155mm)','120mm Mortar','M101 (105mm)','SBAT-70 (راکت)']
+}},
+{id:'au',name:'🇦🇺 استرالیا',gdp:1700,pop:26,budget:32,nuclear:false,nukes:[],profile:{
+ army:60,tankBase:60,tanks:['M1A2 Abrams','ASLAV','Bushmaster','Hawkei','M113AS4','Boxer CRV','Centauro (ذخیره)'],
+ jetBase:90,jets:['F-35A Lightning','F/A-18F Super Hornet','EA-18G Growler','E-7 Wedgetail','P-8A Poseidon','C-17 Globemaster','KC-30A'],
+ droneBase:15,drones:['MQ-4C Triton','MQ-9B SkyGuardian','Heron','ScanEagle','Wedgetail (تجسسی)','Loyal Wingman (Ghost Bat)','Insitu UAV'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:50,cruise:['Tomahawk (خریداری)','Harpoon','JASSM-ER','NSM (ضدکشتی)','SM-6 (دفاع/حمله)','LRASM','AGM-158'],
+ airdefBase:5,airdef:['NASAMS','RBS-70','Vshorad','Aegis (دریایی)','ESSM','SeaRAM','Phalanx'],
+ navyBase:2,navy:['ناو آبی‌خاکی Canberra','ناوشکن Hobart (Aegis)','فریگات Anzac','زیردریایی Collins','زیردریایی هسته‌ای (AUKUS - آینده)','کشتی پشتیبانی Supply','کشتی گشتی Arafura'],
+ artilleryBase:40,artillery:['M777 Howitzer','HIMARS (خریداری)','81mm Mortar','M113 (نسخه توپخانه)','LAND 8113 (آینده)','120mm Mortar','Hamel Gun (موزه‌ای)']
+}},
+{id:'ca',name:'🇨🇦 کانادا',gdp:2200,pop:39,budget:27,nuclear:false,nukes:[],profile:{
+ army:65,tankBase:80,tanks:['Leopard 2A6M','Leopard 2A4 (ذخیره)','LAV 6.0','TAPV','M113 (ذخیره)','Coyote','Bison'],
+ jetBase:80,jets:['F-35A (در حال تحویل)','CF-18 Hornet','CP-140 Aurora','CC-130J Hercules','CC-150 Polaris','CH-147 Chinook','CH-146 Griffon'],
+ droneBase:10,drones:['MQ-9B SkyGuardian (آینده)','ScanEagle','CU-170 Heron','پهپاد ساحلی','مینی‌پهپاد ارتشی','پهپاد قطبی','پهپاد دریایی گشتی'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:20,cruise:['Harpoon','Tomahawk (آینده برای زیردریایی)','RGM-84','-','-','-','-'],
+ airdefBase:3,airdef:['NASAMS (خریداری جدید)','ADATS (بازنشسته)','Stinger قابل‌حمل','-','-','-','-'],
+ navyBase:3,navy:['فریگات Halifax','زیردریایی Victoria','ناوچه گشتی Harry DeWolf','کشتی پشتیبانی Asterix','ناوچه ساحلی Kingston','کشتی یخ‌شکن مسلح','ناوشکن آینده (CSC)'],
+ artilleryBase:35,artillery:['M777 Howitzer','LG1 Mk II','81mm Mortar','105mm C3 Howitzer','120mm Mortar','M109 (ذخیره)','Carl Gustaf (سنگین)']
+}},
+{id:'es',name:'🇪🇸 اسپانیا',gdp:1500,pop:47,budget:20,nuclear:false,nukes:[],profile:{
+ army:120,tankBase:300,tanks:['Leopard 2E','M60A3TTS (ذخیره)','Pizarro IFV','VEC-M1','BMR-600','VAMTAC','Centauro'],
+ jetBase:80,jets:['Eurofighter Typhoon','F/A-18 Hornet (بازنشسته تدریجی)','A400M','CN-235','P-3 Orion','Harrier (ناوی - بازنشسته)','Tiger HAD (هلیکوپتر)'],
+ droneBase:8,drones:['Searcher Mk-III','Heron','ATLANTE (ملی - آینده)','PASI (مینی)','SIVA','Milano','Viator'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:30,cruise:['Harpoon','Taurus KEPD 350','Exocet (محدود)','-','-','-','-'],
+ airdefBase:10,airdef:['Aspide','NASAMS (آینده)','Mistral SHORAD','Skyguard','Patriot (محدود)','VL MICA (دریایی)','Meroka'],
+ navyBase:3,navy:['ناو هواپیمابر Juan Carlos I','فریگات F-100 Álvaro de Bazán','زیردریایی S-80 Isaac Peral','فریگات F-80 Santa María','ناوچه گشتی','کشتی پشتیبانی Cantabria','ناوچه ساحلی'],
+ artilleryBase:90,artillery:['M109A5 (خودکششی)','SIAC (155mm)','M114 (ذخیره)','120mm Mortar','Teruel (MLRS)','81mm Mortar','M101 (105mm)']
+}},
+{id:'it',name:'🇮🇹 ایتالیا',gdp:2200,pop:59,budget:32,nuclear:false,nukes:[],profile:{
+ army:100,tankBase:200,tanks:['Ariete C1','Centauro','Freccia IFV','Dardo IFV','Puma (مشترک)','VTLM Lince','M113 (ذخیره)'],
+ jetBase:100,jets:['Eurofighter Typhoon','F-35A/B Lightning','Tornado IDS (بازنشسته تدریجی)','KC-767A','C-27J Spartan','AMX-ACOL','P-72A'],
+ droneBase:10,drones:['Predator B (MQ-9)','Falco EVO','Hermes 900','SkyY (تجربی)','Camcopter S-100','مینی‌پهپاد ارتشی','Crex-2'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:30,cruise:['Storm Shadow','Marte ER (دریایی)','Otomat','Teseo Mk2','-','-','-'],
+ airdefBase:8,airdef:['SAMP/T Aster 30','Skyguard/Aspide','Stinger','RIM-116 RAM (دریایی)','Albatros (دریایی)','VL MICA','OTOMATIC'],
+ navyBase:4,navy:['ناو هواپیمابر Cavour','ناو هواپیمابر Trieste','زیردریایی Todaro (U212A)','فریگات FREMM','ناوشکن Orizzonte','کشتی آبی‌خاکی San Giorgio','کشتی پشتیبانی Vulcano'],
+ artilleryBase:100,artillery:['PzH 2000 (مشترک)','FH-70 (155mm)','M109L (خودکششی)','120mm Mortar','81mm Mortar','M114 (ذخیره)','M56 (پک هوویتزر)']
+}},
+{id:'pl',name:'🇵🇱 لهستان',gdp:850,pop:38,budget:30,nuclear:false,nukes:[],profile:{
+ army:200,tankBase:600,tanks:['K2 Black Panther (خریداری)','Leopard 2A5','PT-91 Twardy','T-72M1','Rosomak IFV','Borsuk (آینده)','BWP-1'],
+ jetBase:80,jets:['F-16C/D','F-35A (در حال تحویل)','MiG-29 (ذخیره)','FA-50 (خریداری)','Su-22 (ذخیره)','C-130 Hercules','M-346 Bielik'],
+ droneBase:20,drones:['Bayraktar TB2','FlyEye','Orbiter','Gladius (مینی)','Wizar','Warmate (انتحاری)','پهپاد ساخت داخل'],
+ ballisticBase:10,ballistic:['HIMARS (راکت بالستیک کوتاه)','Homar-K','-','-','-','-','-'],
+ cruiseBase:30,cruise:['JASSM-ER (خریداری)','Naval Strike Missile','RBS-15','AGM-158B','-','-','-'],
+ airdefBase:15,airdef:['Patriot PAC-3','NASAMS (Wisła)','Narew (آینده)','Poprad','Grom قابل‌حمل','Loara','Pilica'],
+ navyBase:2,navy:['ناوچه Kormoran II','زیردریایی Orka (آینده)','زیردریایی Kobben (قدیمی)','فریگات Oliver Hazard Perry','ناوچه گشتی','کشتی پشتیبانی Kontradmirał','کشتی آموزشی'],
+ artilleryBase:250,artillery:['Krab (خودکششی)','Rak (120mm خودکششی)','Dana (چکسلواکی)','WR-40 Langusta (MLRS)','120mm Mortar','M120 Rak','BM-21 (ذخیره)']
+}},
+{id:'ua',name:'🇺🇦 اوکراین',gdp:178,pop:37,budget:65,nuclear:false,nukes:[],profile:{
+ army:900,tankBase:800,tanks:['T-64BV','Leopard 2A4 (کمک شده)','T-72 (کمک شده)','Challenger 2 (محدود)','BMP-1/2','BTR-4','M2 Bradley (کمک شده)'],
+ jetBase:60,jets:['MiG-29','Su-27','F-16 (در حال تحویل)','Su-25 Frogfoot','Su-24M','Mi-24 (هلیکوپتر)','An-26'],
+ droneBase:2000,drones:['Bayraktar TB2','پهپاد FPV انتحاری','Punisher','RAM II','Leleka-100','پهپاد دریایی Sea Baby','Shark (شناسایی)'],
+ ballisticBase:10,ballistic:['Hrim-2 (محدود)','Tochka-U (ذخیره)','-','-','-','-','-'],
+ cruiseBase:30,cruise:['Neptune (ضدکشتی)','Storm Shadow (کمک شده)','SCALP (کمک شده)','-','-','-','-'],
+ airdefBase:20,airdef:['S-300 (ذخیره شوروی)','Patriot (کمک شده)','NASAMS (کمک شده)','IRIS-T (کمک شده)','Buk-M1','Gepard (کمک شده)','Stinger'],
+ navyBase:1,navy:['ناوچه گشتی Hetman Sahaidachny (غرق‌شده)','کشتی موشک‌انداز کوچک','قایق تندرو دریایی','کشتی پشتیبانی ساحلی','ناوچه گشتی جدید','کشتی آموزشی','واحد دریایی بدون سرنشین'],
+ artilleryBase:700,artillery:['2S22 Bohdana (خودکششی ملی)','M777 (کمک شده)','CAESAR (کمک شده)','PzH 2000 (کمک شده)','BM-21 Grad','2S7 Pion','D-30 Howitzer']
+}},
+{id:'id',name:'🇮🇩 اندونزی',gdp:1400,pop:277,budget:9,nuclear:false,nukes:[],profile:{
+ army:300,tankBase:400,tanks:['Leopard 2RI','Marder 1A3','Anoa APC','BMP-3F','Badak (سبک)','AMX-13 (ذخیره)','Komodo'],
+ jetBase:50,jets:['F-16C/D','Su-27/30','Rafale (در حال تحویل)','T-50i Golden Eagle','C-130 Hercules','EMB-314 Super Tucano','CN-235'],
+ droneBase:10,drones:['CH-4 (چینی)','Wulung (ملی)','ANKA (ترکیه)','Garda (ملی)','Sriti','پهپاد ساحلی','مینی‌پهپاد ارتشی'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:15,cruise:['Yakhont/Exocet','C-705','-','-','-','-','-'],
+ airdefBase:5,airdef:['NASAMS','Starstreak','Oerlikon Skyshield','QW-3','-','-','-'],
+ navyBase:3,navy:['فریگات Martadinata','زیردریایی Nagapasa','کشتی آبی‌خاکی Makassar','ناوچه گشتی KCR','فریگات Van Speijk (ذخیره)','کشتی پشتیبانی','ناوچه ساحلی'],
+ artilleryBase:100,artillery:['ASTROS II (MLRS)','KH-179 (155mm)','M101 (105mm)','Caesar (در حال خریداری)','120mm Mortar','M30 (107mm)','81mm Mortar']
+}},
+{id:'th',name:'🇹🇭 تایلند',gdp:495,pop:71,budget:6,nuclear:false,nukes:[],profile:{
+ army:245,tankBase:300,tanks:['VT-4 (چینی)','M60A3','Stingray (سبک)','M113','BTR-3','First Win APC','AAV-7'],
+ jetBase:60,jets:['F-16A/B','Gripen C/D','L-39 Albatros','AU-23 Peacemaker','C-130 Hercules','Alpha Jet (ذخیره)','T-50TH'],
+ droneBase:8,drones:['Searcher Mk-II','پهپاد ساخت داخل','Aerostar','مینی‌پهپاد ارتشی','پهپاد دریایی گشتی','پهپاد مرزی','RTAF UAV'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:10,cruise:['Harpoon','RBS-15','C-802 (چینی)','-','-','-','-'],
+ airdefBase:5,airdef:['Aspide','QW-18','Stinger','Igla','-','-','-'],
+ navyBase:2,navy:['ناو هواپیمابر Chakri Naruebet','فریگات Bhumibol Adulyadej','زیردریایی Yuan (چینی - تحویل)','ناوچه گشتی Krabi','کشتی آبی‌خاکی','ناوچه ساحلی','کشتی پشتیبانی'],
+ artilleryBase:120,artillery:['ATMG-105 (105mm)','GHN-45 (155mm)','DTI-1 (راکت)','M101 (105mm)','120mm Mortar','81mm Mortar','M198 (155mm)']
+}},
+{id:'vn',name:'🇻🇳 ویتنام',gdp:430,pop:98,budget:8,nuclear:false,nukes:[],profile:{
+ army:480,tankBase:1500,tanks:['T-90S/SK','T-54/55 (ذخیره)','T-34 (موزه‌ای)','BMP-1','BTR-152','PT-76 (شناور)','Type 63'],
+ jetBase:60,jets:['Su-30MK2','Su-22 (ذخیره)','Yak-130 (آموزشی-رزمی)','L-39NG','C-295','Mi-8 (هلیکوپتر)','Mi-171'],
+ droneBase:15,drones:['Orbiter','پهپاد ساخت داخل VN','Switchblade (محدود)','مینی‌پهپاد ارتشی','پهپاد ساحلی','پهپاد مرزی','RQ-21 (محدود)'],
+ ballisticBase:15,ballistic:['Scud-B (ذخیره)','Extra (اسرائیلی)','-','-','-','-','-'],
+ cruiseBase:30,cruise:['P-800 Oniks (Bastion)','Kh-35 Uran','3M-54 Klub','-','-','-','-'],
+ airdefBase:10,airdef:['S-300PMU1','SPYDER','Strela-10','Igla-S','-','-','-'],
+ navyBase:4,navy:['زیردریایی Kilo','فریگات Gepard 3.9','ناوچه Molniya','کشتی گشتی DN2000','ناوچه ساحلی','کشتی پشتیبانی','ناوچه راداری'],
+ artilleryBase:600,artillery:['D-30 Howitzer','BM-21 Grad','M101 (ذخیره)','D-20 (152mm)','120mm Mortar','M46 (130mm)','ZU-23 (ضدهوایی)']
+}},
+{id:'ng',name:'🇳🇬 نیجریه',gdp:477,pop:223,budget:3,nuclear:false,nukes:[],profile:{
+ army:230,tankBase:250,tanks:['T-72 (محدود)','Vickers Mk3','Otokar Cobra','Igirigi APC','Buffalo MPV','Aliyu Maina','Panthera T6'],
+ jetBase:25,jets:['Alpha Jet','JF-17 Thunder (خریداری)','Super Tucano','C-130 Hercules','MiG-21 (ذخیره)','L-39ZA','Mi-35 (هلیکوپتر)'],
+ droneBase:10,drones:['CH-3 (چینی)','Wing Loong','Tsaigumi (ملی)','Gulma (شناسایی)','مینی‌پهپاد ارتشی','پهپاد مرزی','پهپاد گشت نفتی'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:0,cruise:['ندارد','-','-','-','-','-','-'],
+ airdefBase:3,airdef:['Roland (محدود)','Strela قابل‌حمل','ZU-23 ضدهوایی','-','-','-','-'],
+ navyBase:2,navy:['فریگات Aradu','ناوچه گشتی NNS Centenary','کشتی ساحلی Andoni','ناوچه گشتی سریع','کشتی پشتیبانی','ناوچه دفاع نفتی','قایق گشتی رودخانه‌ای'],
+ artilleryBase:90,artillery:['M101 (105mm)','M46 (130mm)','120mm Mortar','81mm Mortar','D-30 (122mm)','BM-21 (محدود)','Type 59 (ذخیره)']
+}},
+{id:'za',name:'🇿🇦 آفریقای جنوبی',gdp:399,pop:60,budget:3,nuclear:false,nukes:[],profile:{
+ army:75,tankBase:50,tanks:['Rooikat (چرخ‌دار)','Ratel IFV','Mamba APC','Casspir','RG-31 Nyala','Olifant (ذخیره)','Badger (آینده)'],
+ jetBase:30,jets:['Gripen C/D','Hawk Mk120','C-130BZ Hercules','PC-7 Astra','Cessar 208 (نظامی)','Oryx (هلیکوپتر)','Rooivalk'],
+ droneBase:8,drones:['Seeker 400','Vulture (ملی)','Hungwe (شناسایی)','مینی‌پهپاد ارتشی','پهپاد مرزی','پهپاد گشت ساحلی','Vulture II'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:10,cruise:['Umkhonto (دریایی)','Exocet (محدود)','-','-','-','-','-'],
+ airdefBase:5,airdef:['Umkhonto-IR','Starstreak','ZA-HVM','-','-','-','-'],
+ navyBase:2,navy:['فریگات Valour','زیردریایی Heroine (Type 209)','ناوچه گشتی Warrior','کشتی پشتیبانی Drakensberg','ناوچه ساحلی','کشتی هیدروگرافی','قایق گشتی ساحلی'],
+ artilleryBase:60,artillery:['G6 Rhino (خودکششی)','G5 (155mm)','Bateleur (MLRS)','120mm Mortar','81mm Mortar','M5 (ذخیره)','Valkiri (راکت)']
+}},
+{id:'mx',name:'🇲🇽 مکزیک',gdp:1800,pop:128,budget:8,nuclear:false,nukes:[],profile:{
+ army:280,tankBase:50,tanks:['ERC-90 Lynx','VBL (سبک)','HumVee مسلح','DN-V APC','MOWAG (سوئیسی)','Panhard M11','Pumiac'],
+ jetBase:20,jets:['F-5E Tiger (ذخیره)','Pilatus PC-7/9','EMB-314 Super Tucano','C-130 Hercules','Mi-17 (هلیکوپتر)','Bell 212','T-6 Texan'],
+ droneBase:10,drones:['Hermes 450','پهپاد ساخت داخل','S4 Ehécatl (ملی)','مینی‌پهپاد ارتشی','پهپاد مرزی','پهپاد گشت دریایی','پهپاد مبارزه با مواد مخدر'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:0,cruise:['ندارد','-','-','-','-','-','-'],
+ airdefBase:2,airdef:['Igla قابل‌حمل','Stinger (محدود)','-','-','-','-','-'],
+ navyBase:3,navy:['فریگات Allende (Oliver Hazard Perry)','ناوچه گشتی Sierra','کشتی Reformador','ناوچه ساحلی Tenochtitlan','کشتی پشتیبانی Huasteco','قایق تندرو ساحلی','کشتی آموزشی Cuauhtémoc'],
+ artilleryBase:30,artillery:['M101 (105mm)','81mm Mortar','60mm Mortar','M2 (ذخیره)','Mortero ساخت داخل','120mm Mortar','Howitzer سبک']
+}},
+{id:'ar',name:'🇦🇷 آرژانتین',gdp:640,pop:46,budget:3,nuclear:false,nukes:[],profile:{
+ army:75,tankBase:60,tanks:['TAM (ملی)','M113 (ذخیره)','VCTP IFV','ERC-90 Lynx','Patagon (سبک)','Gaucho','M548'],
+ jetBase:25,jets:['A-4AR Fightinghawk (ذخیره)','IA-63 Pampa','F-16 (در حال مذاکره)','C-130 Hercules','Pucará (تهاجمی سبک)','T-34 Mentor','Bell UH-1'],
+ droneBase:5,drones:['پهپاد ساخت داخل SARA','Nostromo','مینی‌پهپاد ارتشی','پهپاد مرزی','پهپاد گشت ساحلی','Lipán M3','پهپاد آموزشی'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:5,cruise:['Exocet (محدود)','-','-','-','-','-','-'],
+ airdefBase:2,airdef:['Roland (ذخیره)','Tigercat (قدیمی)','-','-','-','-','-'],
+ navyBase:2,navy:['ناوچه گشتی Bouchard','فریگات Espora','کشتی Drummond','ناوچه ساحلی Bahía','کشتی پشتیبانی قطبی','کشتی آموزشی Libertad','قایق گشتی'],
+ artilleryBase:50,artillery:['CITER (105mm)','M101 (ذخیره)','81mm Mortar','120mm Mortar','VCA (خودکششی)','M114 (155mm)','60mm Mortar']
+}},
+{id:'nl',name:'🇳🇱 هلند',gdp:1100,pop:18,budget:14,nuclear:false,nukes:[],profile:{
+ army:35,tankBase:18,tanks:['Leopard 2A6 (مشترک با آلمان)','CV90 (آینده)','Boxer','Fennek','YPR-765 (ذخیره)','Bushmaster','Viking'],
+ jetBase:40,jets:['F-35A Lightning','F-16 (در حال جایگزینی)','C-130H Hercules','KDC-10 (سوخت‌رسان)','NH90 (هلیکوپتر)','AH-64D Apache','Chinook CH-47'],
+ droneBase:8,drones:['MQ-9 Reaper','ScanEagle','Raven','Integrator','مینی‌پهپاد ارتشی','پهپاد دریایی گشتی','پهپاد ساحلی'],
+ ballisticBase:0,ballistic:['ندارد','-','-','-','-','-','-'],
+ cruiseBase:15,cruise:['Harpoon','NSM (آینده)','-','-','-','-','-'],
+ airdefBase:5,airdef:['Patriot PAC-3','NASAMS','Stinger','Fennek (رادار)','-','-','-'],
+ navyBase:2,navy:['فریگات De Zeven Provinciën','زیردریایی Walrus','کشتی آبی‌خاکی Rotterdam','ناوچه گشتی Holland','کشتی پشتیبانی Karel Doorman','کشتی یخ‌شکن مسلح','ناوچه ساحلی'],
+ artilleryBase:20,artillery:['PzH 2000 (مشترک)','120mm Mortar','81mm Mortar','M114 (ذخیره)','Mortier ساخت داخل','M30 (107mm)','60mm Mortar']
+}},
+];
+
+function buildDefaultState(){
+  const st={
+    tickerText:'🔴 به سامانه جنگ جهانی خوش آمدید — آماده نبرد باشید',
+    playerCodes:[],
+    assignedCountries:{},
+    capturedCountries:[],
+    pendingRequests:[],
+    approvedNews:[],
+    countryEquip:{}
+  };
+  COUNTRIES.forEach(c=>{
+    c.equip=buildEquip(c.profile);
+    st.countryEquip[c.id]=c.equip.map(cat=>({cat:cat.cat,items:cat.items.map(i=>({...i}))}));
+  });
+  return st;
+}
+function isValidState(s){
+  if(!s||typeof s!=='object') return false;
+  // Firebase Realtime Database silently converts empty arrays to null,
+  // and can return sparse/non-array arrays as plain objects with numeric keys.
+  // Normalize all of that here instead of rejecting the whole state.
+  s.playerCodes = toArray(s.playerCodes);
+  s.capturedCountries = toArray(s.capturedCountries);
+  s.pendingRequests = toArray(s.pendingRequests);
+  s.approvedNews = toArray(s.approvedNews);
+  if(s.assignedCountries==null || typeof s.assignedCountries!=='object') s.assignedCountries={};
+  if(s.countryEquip==null || typeof s.countryEquip!=='object') s.countryEquip={};
+  return true;
+}
+
+function toArray(v){
+  if(Array.isArray(v)) return v;
+  if(v==null) return [];
+  if(typeof v==='object') return Object.keys(v).sort((a,b)=>Number(a)-Number(b)).map(k=>v[k]);
+  return [];
+}
+
+/* ============ Firebase init + sync ============ */
+function initFirebase(){
+  COUNTRIES.forEach(c=>{ c.equip=buildEquip(c.profile); });
+  const isPlaceholder = FIREBASE_CONFIG.apiKey === "YOUR_API_KEY";
+  if(isPlaceholder){
+    document.getElementById('setup-warning').classList.remove('hidden');
+    gameState = buildDefaultState();
+    try{
+      const raw = localStorage.getItem('ww_local_fallback');
+      if(raw){ const p = JSON.parse(raw); if(isValidState(p)) gameState = p; }
+    }catch(e){}
+    renderEverythingIfVisible();
+    setConnStatus(false);
+    return;
+  }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    dbRef = firebase.database().ref('worldWarGame');
+    firebase.database().ref('.info/connected').on('value', (snap)=>{
+      setConnStatus(!!snap.val());
+    });
+    let receivedFirstSnapshot = false;
+    gameState = null;
+    firebaseReady = false;
+
+    dbRef.once('value').then((snapshot)=>{
+      const val = snapshot.val();
+      if(isValidState(val)){
+        gameState = val;
+      } else {
+        gameState = buildDefaultState();
+        dbRef.set(gameState);
+      }
+      COUNTRIES.forEach(c=>{
+        if(!gameState.countryEquip[c.id]){
+          gameState.countryEquip[c.id]=c.equip.map(cat=>({cat:cat.cat,items:cat.items.map(i=>({...i}))}));
+        }
+      });
+      receivedFirstSnapshot = true;
+      firebaseReady = true;
+      renderEverythingIfVisible();
+
+      dbRef.on('value', (snap2)=>{
+        if(!receivedFirstSnapshot) return;
+        const v2 = snap2.val();
+        if(isValidState(v2)){
+          gameState = v2;
+          COUNTRIES.forEach(c=>{
+            if(!gameState.countryEquip[c.id]){
+              gameState.countryEquip[c.id]=c.equip.map(cat=>({cat:cat.cat,items:cat.items.map(i=>({...i}))}));
+            }
+          });
+          renderEverythingIfVisible();
+        }
+        /* NOTE: if v2 is invalid/null here (e.g. a transient disconnect glitch),
+           we deliberately do NOT overwrite the server with a fresh default state.
+           Only the initial load (above) is allowed to seed the database. */
+      });
+    }).catch((e)=>{
+      console.error('Firebase initial read failed', e);
+      setConnStatus(false);
+      if(!gameState){
+        gameState = buildDefaultState();
+        renderEverythingIfVisible();
+      }
+    });
+  }catch(e){
+    console.error('Firebase init failed', e);
+    document.getElementById('setup-warning').classList.remove('hidden');
+    gameState = buildDefaultState();
+    setConnStatus(false);
+  }
+}
+
+function setConnStatus(online){
+  const el = document.getElementById('conn-status');
+  if(!el) return;
+  el.className = 'conn-status ' + (online ? 'online' : 'offline');
+  el.textContent = online ? '🟢 متصل به سرور — همه بازیکنان همزمان' : '🔴 آفلاین — فقط محلی';
+}
+
+function save(){
+  if(dbRef && firebaseReady){
+    dbRef.set(gameState).catch(e=>console.error('Firebase write failed', e));
+  } else {
+    try{ localStorage.setItem('ww_local_fallback', JSON.stringify(gameState)); }catch(e){}
+  }
+}
+
+function resetAllData(){
+  if(!confirm('تمام داده‌های بازی (کدها، کشورها، تجهیزات تغییریافته، درخواست‌ها) برای همه بازیکنان پاک می‌شود. ادامه می‌دهید؟'))return;
+  gameState = buildDefaultState();
+  save();
+  renderOwnerPanel();
+  ownerTab('ticker', document.querySelector('#screen-owner-panel .tab[data-tab="ticker"]'));
+  alert('✅ داده‌ها پاک‌سازی شد');
+}
+
+function renderEverythingIfVisible(){
+  if(!document.getElementById('screen-owner-panel').classList.contains('hidden')){
+    renderOwnerPanel();
+    const activeTab = document.querySelector('#screen-owner-panel .tab.active');
+    if(activeTab) ownerTab(activeTab.dataset.tab, activeTab);
+  }
+  if(!document.getElementById('screen-player-panel').classList.contains('hidden')){
+    renderPlayerPanel();
+    const activeTab = document.querySelector('#screen-player-panel .player-tab.active');
+    if(activeTab) playerTab(activeTab.dataset.tab, activeTab);
+  }
+}
+
+/* ============ Navigation ============ */
+function showHome(){
+  ['screen-home','screen-owner-login','screen-player-login','screen-owner-panel','screen-player-panel'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el){el.classList.toggle('hidden',id!=='screen-home');}
+  });
+}
+function showOwnerLogin(){showHome();document.getElementById('screen-home').classList.add('hidden');document.getElementById('screen-owner-login').classList.remove('hidden');}
+function showPlayerLogin(){showHome();document.getElementById('screen-home').classList.add('hidden');document.getElementById('screen-player-login').classList.remove('hidden');}
+
+function ownerLogin(){
+  if(document.getElementById('owner-pass').value===OWNER_PASS){
+    document.getElementById('screen-owner-login').classList.add('hidden');
+    document.getElementById('screen-owner-panel').classList.remove('hidden');
+    renderOwnerPanel();
+  } else document.getElementById('owner-err').textContent='❌ رمز اشتباه است';
+}
+
+function playerLogin(){
+  const code=document.getElementById('player-code').value.trim();
+  const found=gameState.playerCodes.find(c=>c.code===code);
+  if(!found){document.getElementById('player-err').textContent='❌ کد نامعتبر است';return;}
+  currentPlayerCode=code;
+  currentPlayerCountry=gameState.assignedCountries[code]||'';
+  document.getElementById('screen-player-login').classList.add('hidden');
+  document.getElementById('screen-player-panel').classList.remove('hidden');
+  renderPlayerPanel();
+}
+
+function ownerTab(tab,btn){
+  ['ticker','codes','countries','requests'].forEach(t=>document.getElementById('owner-'+t).classList.add('hidden'));
+  document.getElementById('owner-'+tab).classList.remove('hidden');
+  document.querySelectorAll('#screen-owner-panel .tab-bar .tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  if(tab==='countries'){renderCountryOwner();}
+  if(tab==='requests') renderPending();
+  if(tab==='codes') renderCodes();
+  if(tab==='ticker'){ document.getElementById('current-ticker-preview').textContent=gameState.tickerText; }
+}
+
+function playerTab(tab,btn){
+  ['dashboard','equip','nuclear','statement','scenario','news','country-select'].forEach(t=>{const el=document.getElementById('player-'+t);if(el)el.classList.add('hidden');});
+  if(tab==='dashboard' && !currentPlayerCountry){
+    document.getElementById('player-country-select').classList.remove('hidden');
+  } else {
+    const el=document.getElementById('player-'+tab);if(el)el.classList.remove('hidden');
+  }
+  document.querySelectorAll('.player-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  if(tab==='news') renderPlayerNews();
+  if(tab==='equip') renderPlayerEquip();
+  if(tab==='nuclear') renderPlayerNuclear();
+  if(tab==='dashboard' && currentPlayerCountry){
+    const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+    if(c) renderPlayerDash(c);
+  }
+}
+
+function updateTicker(){
+  const t=document.getElementById('new-ticker').value.trim();if(!t)return;
+  gameState.tickerText=t;
+  document.getElementById('ticker-text-display').textContent=t;
+  document.getElementById('current-ticker-preview').textContent=t;
+  save();
+}
+
+function renderOwnerPanel(){
+  document.getElementById('current-ticker-preview').textContent=gameState.tickerText;
+  document.getElementById('ticker-text-display').textContent=gameState.tickerText;
+  const sel=document.getElementById('country-select-owner');
+  const prevVal = sel.value;
+  sel.innerHTML='<option value="">انتخاب کشور...</option>';
+  COUNTRIES.forEach(c=>sel.innerHTML+=`<option value="${c.id}">${c.name}</option>`);
+  if(prevVal) sel.value = prevVal;
+  renderCodes();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,function(ch){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+  });
+}
+
+function renderCodes(){
+  const tb=document.getElementById('codes-table');
+  if(!gameState.playerCodes || !gameState.playerCodes.length){
+    tb.innerHTML='<tr><td colspan="4" style="color:#999;font-size:.83rem">هیچ کدی ثبت نشده</td></tr>';
+    return;
+  }
+  tb.innerHTML='';
+  gameState.playerCodes.forEach((c)=>{
+    const cid=gameState.assignedCountries[c.code];
+    const co=cid?COUNTRIES.find(x=>x.id===cid):null;
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><code style="background:#1d1d26;padding:2px 6px;border-radius:4px">${escapeHtml(c.code)}</code></td><td><span class="badge ${c.used?'badge-green':'badge-yellow'}">${c.used?'فعال':'منتظر'}</span></td><td>${co?co.name:'—'}</td>`;
+    const tdBtns=document.createElement('td');
+    tdBtns.className='row-btns';
+    const delBtn=document.createElement('button');
+    delBtn.textContent='حذف کد';
+    delBtn.style.background='#3a0000';delBtn.style.color='#ff6666';
+    delBtn.addEventListener('click',function(){ removeCodeByValue(c.code); });
+    tdBtns.appendChild(delBtn);
+    if(co){
+      const unassignBtn=document.createElement('button');
+      unassignBtn.textContent='پس‌گیری کشور';
+      unassignBtn.style.background='#2a2000';unassignBtn.style.color='#ffd700';
+      unassignBtn.addEventListener('click',function(){ unassignCountryByCode(c.code); });
+      tdBtns.appendChild(unassignBtn);
+    }
+    tr.appendChild(tdBtns);
+    tb.appendChild(tr);
+  });
+}
+
+function addCode(){
+  const input=document.getElementById('new-code-input');
+  const v=input.value.trim();
+  if(!v)return;
+  if(gameState.playerCodes.find(c=>c.code===v)){alert('این کد قبلاً وجود دارد');return;}
+  gameState.playerCodes.push({code:v,used:false});
+  input.value='';
+  save();
+}
+
+function removeCodeByValue(code){
+  if(!confirm('آیا مطمئنید؟ این کد و کشور مرتبط با آن حذف می‌شود.'))return;
+  delete gameState.assignedCountries[code];
+  gameState.playerCodes = gameState.playerCodes.filter(c=>c.code!==code);
+  save();
+}
+
+function unassignCountryByCode(code){
+  if(!confirm('کشور این بازیکن پس گرفته شود؟ بازیکن باید دوباره کشور انتخاب کند.'))return;
+  delete gameState.assignedCountries[code];
+  const f=gameState.playerCodes.find(c=>c.code===code);
+  if(f) f.used=false;
+  save();
+}
+
+function loadCountryEquip(){
+  const id=document.getElementById('country-select-owner').value;
+  const editor=document.getElementById('country-equip-editor');
+  if(!id){editor.innerHTML='';return;}
+  const c=COUNTRIES.find(x=>x.id===id);
+  if(!c){editor.innerHTML='<p style="color:#999">کشور یافت نشد</p>';return;}
+  if(!gameState.countryEquip[id]){
+    gameState.countryEquip[id]=c.equip.map(cat=>({cat:cat.cat,items:cat.items.map(i=>({...i}))}));
+    save();
+  }
+  const equip=gameState.countryEquip[id];
+  let html=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:.88rem;font-weight:bold">${c.name}</span><span style="font-size:.78rem;color:#999">بودجه نظامی: $${c.budget}B</span></div>`;
+  equip.forEach((cat,ci)=>{
+    html+=`<div class="equip-section"><div class="equip-section-title">${escapeHtml(cat.cat)} (${cat.items.length})</div>`;
+    cat.items.forEach((e,ei)=>{
+      html+=`<div class="eq-item"><span class="eq-name">${escapeHtml(e.n)}</span><div class="eq-edit"><input type="number" value="${e.v}" id="eq-${id}-${ci}-${ei}" /><button onclick="saveEquip('${id}',${ci},${ei})" class="action-btn btn-success" style="padding:4px 10px;font-size:.78rem">ذخیره</button><button class="del-x" onclick="deleteEquip('${id}',${ci},${ei})" title="حذف این تجهیز">✕</button></div></div>`;
+    });
+    html+=`</div>`;
+  });
+  html+=`<div style="margin-top:12px;padding-top:12px;border-top:1px solid #2a2a35"><p style="font-size:.82rem;margin-bottom:8px;color:#999">افزودن تجهیز جدید:</p><div class="input-row"><input type="text" id="new-eq-name-${id}" placeholder="نام تجهیز..." /><input type="number" id="new-eq-val-${id}" placeholder="تعداد" style="max-width:90px;flex:none" /><button onclick="addEquip('${id}')" class="action-btn btn-info">افزودن</button></div></div>`;
+  editor.innerHTML=html;
+}
+
+function saveEquip(cid,ci,ei){
+  const input=document.getElementById(`eq-${cid}-${ci}-${ei}`);
+  if(!input)return;
+  const val=parseInt(input.value)||0;
+  gameState.countryEquip[cid][ci].items[ei].v=val;
+  save();
+  alert('✅ ذخیره شد');
+}
+
+function deleteEquip(cid,ci,ei){
+  if(!confirm('این تجهیز حذف شود؟'))return;
+  gameState.countryEquip[cid][ci].items.splice(ei,1);
+  save();
+  setTimeout(loadCountryEquip, 150);
+}
+
+function addEquip(cid){
+  const nameInput=document.getElementById(`new-eq-name-${cid}`);
+  const valInput=document.getElementById(`new-eq-val-${cid}`);
+  const name=nameInput.value.trim();
+  const val=parseInt(valInput.value)||0;
+  if(!name)return;
+  let otherCat=gameState.countryEquip[cid].find(c=>c.cat==='سایر');
+  if(!otherCat){
+    otherCat={cat:'سایر',items:[]};
+    gameState.countryEquip[cid].push(otherCat);
+  }
+  otherCat.items.push({n:name,v:val});
+  save();
+  setTimeout(loadCountryEquip, 150);
+}
+
+function renderCountryOwner(){
+  const tb=document.getElementById('captured-table');
+  if(!tb)return;
+  if(!gameState.capturedCountries || !gameState.capturedCountries.length){
+    tb.innerHTML='<tr><td colspan="3" style="color:#999;font-size:.83rem">هیچ کشوری تسخیر نشده</td></tr>';
+    return;
+  }
+  tb.innerHTML='';
+  gameState.capturedCountries.forEach(c=>{tb.innerHTML+=`<tr><td>${escapeHtml(c.country)}</td><td>${escapeHtml(c.by)}</td><td>${escapeHtml(c.date)}</td></tr>`;});
+}
+
+function renderPending(){
+  const div=document.getElementById('pending-list');
+  const pending=gameState.pendingRequests.filter(r=>r.status==='pending');
+  if(!pending.length){div.innerHTML='<p style="color:#999;font-size:.85rem">هیچ درخواست در انتظاری وجود ندارد</p>';return;}
+  div.innerHTML='';
+  pending.forEach((r)=>{
+    const idx=gameState.pendingRequests.indexOf(r);
+    div.innerHTML+=`<div class="pending-card">
+      <div class="pc-title">${r.type==='statement'?'📜 بیانیه':'⚔️ سناریو'} — ${escapeHtml(r.title||r.scenarioType)}</div>
+      <div class="pc-meta">از: ${escapeHtml(r.country)} | ${escapeHtml(r.date)}</div>
+      <div style="font-size:.82rem;margin-top:6px;color:#eee">${escapeHtml(r.text)}</div>
+      ${r.type==='statement'&&r.photo?`<img src="${r.photo}" class="photo-preview" />`:''}
+      <div class="pending-btns">
+        <button onclick="openReply(${idx})" style="background:#003366;color:#87ceeb">💬 پاسخ به بازیکن</button>
+        <button onclick="approveReq(${idx})" style="background:#1a5c1a;color:white">✅ تأیید</button>
+        <button onclick="rejectReq(${idx})" style="background:#8b0000;color:white">❌ رد</button>
+      </div>
+      <div class="reply-box" id="reply-box-${idx}">
+        <textarea id="reply-text-${idx}" placeholder="پیام شما برای این بازیکن..."></textarea>
+        <button class="action-btn btn-info" onclick="sendReply(${idx})">ارسال پیام</button>
+      </div>
+    </div>`;
+  });
+}
+
+function openReply(i){ document.getElementById('reply-box-'+i).classList.toggle('show'); }
+
+function sendReply(i){
+  const ta=document.getElementById('reply-text-'+i);
+  const text=ta.value.trim();
+  if(!text)return;
+  const r=gameState.pendingRequests[i];
+  gameState.approvedNews.unshift({text:`💬 پیام مالک به ${r.country}: ${text}`,date:new Date().toLocaleDateString('fa-IR'),isReply:true});
+  save();
+  ta.value='';
+  alert('✅ پیام ارسال شد');
+}
+
+function approveReq(i){
+  gameState.pendingRequests[i].status='approved';
+  gameState.approvedNews.unshift({text:`✅ تأیید شد: ${gameState.pendingRequests[i].title||gameState.pendingRequests[i].scenarioType} از ${gameState.pendingRequests[i].country}`,date:new Date().toLocaleDateString('fa-IR'),status:'approved'});
+  save();
+}
+function rejectReq(i){
+  gameState.pendingRequests[i].status='rejected';
+  gameState.approvedNews.unshift({text:`❌ رد شد: ${gameState.pendingRequests[i].title||gameState.pendingRequests[i].scenarioType} از ${gameState.pendingRequests[i].country}`,date:new Date().toLocaleDateString('fa-IR'),status:'rejected'});
+  save();
+}
+
+function renderPlayerPanel(){
+  const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+  document.getElementById('player-country-name').textContent=c?c.name:'بدون کشور';
+  if(!currentPlayerCountry){
+    document.getElementById('player-country-select').classList.remove('hidden');
+    document.getElementById('player-dashboard').classList.add('hidden');
+    renderCountryGrid();
+  } else {
+    document.getElementById('player-country-select').classList.add('hidden');
+    document.getElementById('player-dashboard').classList.remove('hidden');
+    renderPlayerDash(c);
+  }
+}
+
+function renderCountryGrid(){
+  const grid=document.getElementById('country-grid');
+  const searchEl=document.getElementById('country-search');
+  const q=(searchEl?searchEl.value:'').trim();
+  grid.innerHTML='';
+  COUNTRIES.filter(c=>c.name.includes(q)).forEach(c=>{
+    const taken=Object.values(gameState.assignedCountries).includes(c.id);
+    const btn=document.createElement('button');
+    btn.className='country-btn'+(taken?' taken':'');
+    btn.disabled=taken;
+    btn.innerHTML=c.name+(taken?'<br><small>گرفته شده</small>':'');
+    if(!taken) btn.addEventListener('click',function(){ pickCountry(c.id); });
+    grid.appendChild(btn);
+  });
+}
+
+function pickCountry(id){
+  if(Object.values(gameState.assignedCountries).includes(id)){alert('این کشور قبلاً انتخاب شده است!');return;}
+  gameState.assignedCountries[currentPlayerCode]=id;
+  const f=gameState.playerCodes.find(c=>c.code===currentPlayerCode);
+  if(f) f.used=true;
+  currentPlayerCountry=id;
+  save();
+  renderPlayerPanel();
+}
+
+function renderPlayerDash(c){
+  const equip=gameState.countryEquip[c.id]||c.equip;
+  const armyCat=equip.find(x=>x.cat==='نیروی انسانی');
+  const army=armyCat?armyCat.items[0].v:0;
+  const grid=document.getElementById('p-stats-grid');
+  if(!grid)return;
+  grid.innerHTML=`
+    <div class="stat-card"><div class="num">$${c.gdp.toLocaleString()}B</div><div class="lbl">تولید ناخالص داخلی</div></div>
+    <div class="stat-card"><div class="num">${c.pop}M</div><div class="lbl">جمعیت</div></div>
+    <div class="stat-card"><div class="num">${army.toLocaleString()}K</div><div class="lbl">نیروی نظامی فعال</div></div>
+    <div class="stat-card"><div class="num">$${c.budget}B</div><div class="lbl">بودجه دفاعی سالانه</div></div>
+    <div class="stat-card"><div class="num">${c.nuclear?'✅ دارد':'❌ ندارد'}</div><div class="lbl">سلاح هسته‌ای</div></div>
+    <div class="stat-card"><div class="num">${equip.reduce((s,cat)=>s+cat.items.length,0)}</div><div class="lbl">انواع تجهیزات</div></div>`;
+}
+
+function renderPlayerEquip(){
+  const listEl=document.getElementById('player-equip-list');
+  if(!currentPlayerCountry){listEl.innerHTML='<p style="color:#999">ابتدا کشور انتخاب کنید</p>';return;}
+  const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+  if(!c){listEl.innerHTML='<p style="color:#999">کشور یافت نشد</p>';return;}
+  const equip=gameState.countryEquip[c.id]||c.equip;
+  let html='';
+  equip.forEach(cat=>{
+    html+=`<div class="equip-section"><div class="equip-section-title">${escapeHtml(cat.cat)}</div>`;
+    cat.items.forEach(e=>{
+      html+=`<div class="eq-item"><span class="eq-name">${escapeHtml(e.n)}</span><span class="eq-val">${e.v.toLocaleString()}</span></div>`;
+    });
+    html+='</div>';
+  });
+  listEl.innerHTML=html;
+}
+
+function renderPlayerNuclear(){
+  const el=document.getElementById('player-nuclear-content');
+  if(!currentPlayerCountry){el.innerHTML='<p style="color:#999">ابتدا کشور انتخاب کنید</p>';return;}
+  const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+  if(!c.nuclear){
+    el.innerHTML='<div class="warning-box">🚫 این کشور دارای سلاح هسته‌ای نیست. می‌توانید درخواست برنامه هسته‌ای را از طریق بیانیه ارسال کنید.</div>';
+    return;
+  }
+  let html='<div class="nuclear-card"><div class="nc-title">☢️ وضعیت: دارنده سلاح هسته‌ای</div>';
+  c.nukes.forEach(n=>{html+=`<div class="eq-item" style="border-bottom:1px solid #330000"><span style="color:#ffaaaa">${escapeHtml(n.n)}</span><span style="color:#ff4444;font-weight:bold">${n.v.toLocaleString()} عدد</span></div>`;});
+  html+=`<div style="margin-top:10px;font-size:.78rem;color:#ff8888;padding:8px;background:#1a0000;border-radius:6px">⚠️ استفاده از سلاح هسته‌ای نیاز به تأیید فوری مالک دارد. این تصمیم غیرقابل بازگشت است.</div></div>`;
+  el.innerHTML=html;
+}
+
+function previewPhoto(){
+  const file=document.getElementById('stmt-photo').files[0];
+  if(!file){pendingPhotoData='';document.getElementById('stmt-photo-preview').classList.add('hidden');return;}
+  const reader=new FileReader();
+  reader.onload=function(e){
+    pendingPhotoData=e.target.result;
+    const img=document.getElementById('stmt-photo-preview');
+    img.src=pendingPhotoData;
+    img.classList.remove('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function submitStatement(){
+  const title=document.getElementById('stmt-title').value.trim();
+  const text=document.getElementById('stmt-text').value.trim();
+  if(!title||!text){alert('عنوان و متن بیانیه را پر کنید');return;}
+  if(!pendingPhotoData){document.getElementById('stmt-photo-warn').style.display='inline';return;}
+  document.getElementById('stmt-photo-warn').style.display='none';
+  const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+  gameState.pendingRequests.push({type:'statement',title,text,country:c?c.name:currentPlayerCode,photo:pendingPhotoData,status:'pending',date:new Date().toLocaleDateString('fa-IR')});
+  save();
+  document.getElementById('stmt-title').value='';
+  document.getElementById('stmt-text').value='';
+  document.getElementById('stmt-photo').value='';
+  document.getElementById('stmt-photo-preview').classList.add('hidden');
+  pendingPhotoData='';
+  document.getElementById('stmt-success').style.display='block';
+  setTimeout(()=>document.getElementById('stmt-success').style.display='none',3000);
+}
+
+function submitScenario(){
+  const type=document.getElementById('scenario-type').value;
+  const text=document.getElementById('scenario-text').value.trim();
+  if(!text){alert('جزئیات سناریو را وارد کنید');return;}
+  const c=COUNTRIES.find(x=>x.id===currentPlayerCountry);
+  const typeLabel=type==='war'?'🗡️ حمله':type==='defense'?'🛡️ دفاع':type==='alliance'?'🤝 اتحاد':'📋 تحریم';
+  gameState.pendingRequests.push({type:'scenario',scenarioType:typeLabel,text,country:c?c.name:currentPlayerCode,status:'pending',date:new Date().toLocaleDateString('fa-IR')});
+  save();
+  document.getElementById('scenario-text').value='';
+  document.getElementById('scenario-success').style.display='block';
+  setTimeout(()=>document.getElementById('scenario-success').style.display='none',3000);
+}
+
+function renderPlayerNews(){
+  document.getElementById('news-ticker-display').textContent='📢 '+gameState.tickerText;
+  const div=document.getElementById('news-approved');
+  if(!gameState.approvedNews.length){div.innerHTML='<p style="color:#999;font-size:.85rem;margin-top:12px">هیچ خبر تأیید شده‌ای وجود ندارد</p>';return;}
+  div.innerHTML='<h3 style="font-size:.9rem;margin:12px 0 8px;color:#999">اخبار و پیام‌ها</h3>';
+  gameState.approvedNews.forEach(n=>{
+    const cls=n.status==='approved'?'approved':n.status==='rejected'?'rejected':'';
+    div.innerHTML+=`<div class="msg-item"><div class="msg-from ${cls}">${escapeHtml(n.date)}</div><div class="msg-text">${escapeHtml(n.text)}</div></div>`;
+  });
+}
+
+initFirebase();
+</script>
+</body>
+</html>
